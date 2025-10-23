@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  # 🐘 PostgreSQL with pgvector extension
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # 🔴 Redis
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # ⚙️ FastAPI backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgresql+psycopg2://user:password@postgres:5432/mydb
+      REDIS_URL: redis://redis:6379/0
+      PYTHONUNBUFFERED: 1
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      BACKEND_BASE_URL: http://backend:8000
+      GOOGLE_CLIENT_ID: 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
+      GOOGLE_CLIENT_SECRET: 801066432691-j43ni90q9l5spie8pd3oon7tgrqm7ej8.apps.googleusercontent.com
+
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn server:app --host 0.0.0.0 --port 8000 --reload & celery -A celery_config worker --loglevel=info --concurrency=6
+
+  # 💻 Next.js frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+
+volumes:
+  pgdata:

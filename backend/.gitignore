@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+
+# Virtual Environments
+venv/
+env/
+.venv/
+.venv_insightface/
+
+# Logs
+*.log
+*.log.*
+logs/
+*.out
+
+# Bytecode cache
+.pytest_cache/
+.cache/
+
+# MyPy, Coverage, Testing
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+dist/
+build/
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# Alembic (migrations - keep versions, ignore cache)
+alembic/__pycache__/
+
+# SQLite or local DBs
+*.sqlite3
+*.db
+
+# Environment variables and config
+.env
+.env.*
+*.env
+secrets.json
+config.json
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+docker-compose.override.yml
+
+# Redis dumps
+dump.rdb
+
+# Postgres dumps
+*.sql
+
+# Jupyter (if any)
+.ipynb_checkpoints/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
