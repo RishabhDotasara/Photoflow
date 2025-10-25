@@ -16,9 +16,10 @@ interface FolderSelectorProps {
     folders: Folder[]
     onSave: (folder: Folder) => void
     initialFolder?: Folder
+    isSaved?: boolean
 }
 
-export function FolderSelector({ folders, onSave, initialFolder }: FolderSelectorProps) {
+export function FolderSelector({ folders, onSave, initialFolder, isSaved }: FolderSelectorProps) {
     const [searchQuery, setSearchQuery] = useState("")
     const [tempSelected, setTempSelected] = useState<Folder | null>(initialFolder || null)
     const [isSaving, setIsSaving] = useState(false)
@@ -125,10 +126,10 @@ export function FolderSelector({ folders, onSave, initialFolder }: FolderSelecto
                         <Button onClick={handleReselect} variant="outline" className="flex-1 bg-transparent">
                             Reselect
                         </Button>
-                        <Button onClick={handleSave} className="flex-1" disabled={isSaving}>
+                        {!isSaved && <Button onClick={handleSave} className="flex-1" disabled={isSaving}>
                             {isSaving && <Loader2 className="animate-spin"/>}
                             Save Folder
-                        </Button>
+                        </Button>}
                     </div>
                 </div>
             </CardContent>

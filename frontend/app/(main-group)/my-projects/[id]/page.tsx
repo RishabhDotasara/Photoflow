@@ -1,8 +1,8 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, BadgeInfoIcon, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
@@ -14,8 +14,9 @@ import { useUser } from "@clerk/nextjs"
 import { toast } from "sonner"
 import { FolderSelector } from "@/components/drive-folder-info"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 export default function ProjectDescriptionPage() {
-    const [processingProgress, setProcessingProgress] = useState(45)
+    const [processingProgress, setProcessingProgress] = useState(0)
     const params = useParams<{id:string}>();
     const {user} = useUser();
     const router = useRouter();
@@ -26,16 +27,7 @@ export default function ProjectDescriptionPage() {
     }
 
     // Simulate processing progress
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setProcessingProgress((prev) => {
-                if (prev >= 100) return 100
-                return prev + Math.random() * 15
-            })
-        }, 1000)
-        return () => clearInterval(timer)
-    }, [])
-
+    
     // Mock project data
     const project = {
         id: params.id,
@@ -122,6 +114,27 @@ export default function ProjectDescriptionPage() {
         refetchOnWindowFocus: false,
         enabled: user?.publicMetadata?.userId !== undefined ,
     })
+
+    const getProgressQuery = useQuery({
+        queryKey: ['processing-progress', project.id],
+        queryFn: async () => {
+            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/get-progress?project_id=${project.id}`);
+            if (!resp.ok) {
+                throw new Error("Failed to fetch processing progress");
+            }
+            const resJson = await resp.json();
+            console.log("Progress:", resJson);
+            const fraction = resJson.processed_images / getProjectQuery.data?.image_count;
+            return fraction * 100;
+        },
+        staleTime: 2000, // 30 seconds
+        refetchOnWindowFocus: true,
+        refetchInterval: 2000,
+        enabled: getProjectQuery.data?.status === "processing" && getProjectQuery.isSuccess,
+        onSuccess: (data) => {
+            setProcessingProgress(data);
+        }
+    })
     
     const startAnalysisMutation = useMutation({
         mutationFn: async () => {
@@ -139,6 +152,19 @@ export default function ProjectDescriptionPage() {
         },
         onError: () => {
             toast.error("Failed to start analysis");
+        }
+    })
+
+    const startResyncMutation = useMutation({
+        mutationFn: async () => {
+            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/resync-drive-folder?project_id=${project.id}&user_id=${user?.publicMetadata?.userId}`);
+            if (!resp.ok) {
+                toast.error("Some went wrong!")
+                throw new Error("Failed to start resync");
+            }
+            if (resp.ok){
+                toast.success("Resync started successfully");
+            }
         }
     })
     
@@ -200,21 +226,49 @@ export default function ProjectDescriptionPage() {
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-3 gap-2">
                         <Card>
-                            <CardContent className="pt-6">
-                                <p className="text-sm text-muted-foreground mb-1">Total Photos</p>
+                            <CardHeader className="text-muted-foreground">
+                                Total Photos
+                            </CardHeader>
+                            <CardContent>
+                                {/* <p className="text-sm text-muted-foreground mb-1">Total Photos</p> */}
                                 <p className="text-3xl font-bold text-foreground">{getProjectQuery.data?.image_count || 0} </p>
                             </CardContent>
                         </Card>
-        
-                        {/* <Card>
-                            <CardContent className="pt-6">
-                                <p className="text-sm text-muted-foreground mb-1">Overall Progress</p>
-                                <p className="text-3xl font-bold text-foreground">{Math.round(processingProgress)}%</p>
-                            </CardContent>
 
-                        </Card> */}
+                        {getProjectQuery.data?.status === "processing" && (
+                            <Card>
+                                <CardContent>
+                                    <p className="text-sm text-muted-foreground mb-1">Overall Progress</p>
+                                    <p className="text-3xl font-bold text-foreground">{Math.round(processingProgress)}%</p>
+                                </CardContent>
+
+                        </Card>)}
+
+                        {getProjectQuery.data?.out_of_sync && <Card>
+                            <CardHeader className="text-muted-foreground">
+                                <div className="flex items-center gap-2 justify-start">
+                                Out of Sync Drive
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <BadgeInfoIcon className="h-4 w-4 text-muted-foreground cursor-help" />
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p>Number of images that are not synchronized with your Google Drive folder</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </CardHeader>
+                            {/* <CardContent>
+                                <p className="text-3xl font-bold text-foreground">{getProjectQuery.data?.out_of_sync_count || 0} </p>
+                            </CardContent> */}
+                            <CardFooter className="flex justify-end">
+                                <Button onClick={()=>{startResyncMutation.mutate()}}>Sync Now & Process</Button>
+                            </CardFooter>
+                        </Card>}
                     </div>
                 </div>
 
@@ -228,6 +282,7 @@ export default function ProjectDescriptionPage() {
                         {isFolderSelectedQuery.data ? <FolderSelector
                             folders={listFoldersQuery.data}
                             initialFolder={isFolderSelectedQuery.data.folder_info}
+                            isSaved={isFolderSelectedQuery.data.bool}
                             onSave={(folder) => {
                                 saveFolderIdMutation.mutate(folder)
                             }}

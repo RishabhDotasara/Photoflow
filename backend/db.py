@@ -99,6 +99,9 @@ def mark_image_processed(db: Session, image_id: str):
     db.refresh(img)
     return img
 
+def get_unprocessed_images(db: Session, project_id: str) -> List[Image]:
+    return db.query(Image).filter(Image.project_id == project_id, Image.processed == False).all()
+
 def get_project(db: Session, project_id: str) -> Optional[Project]:
     return db.query(Project).filter(Project.id == project_id).one_or_none()
 

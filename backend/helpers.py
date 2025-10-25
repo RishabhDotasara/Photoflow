@@ -97,6 +97,9 @@ def process_image(img_bytes):
         # print("embedding: ", emb)
         embeddings.append(f.embedding)
 
+    if len(faces) == 0:
+        return None
+
     return embeddings
     
 
@@ -135,4 +138,35 @@ def find_similar_images(
 
     # results = [(Image, best_distance), ...]
     images = [{"image": image, "best_distance": dist} for image, dist in results]
+    return images
+
+def get_drive_images(folder_id: str, creds: Credentials) -> list[dict]:
+    
+    service = build("drive", "v3", credentials=creds, cache_discovery=False)
+    # query: files in the folder and that are images
+    q = f"'{folder_id}' in parents and mimeType contains 'image/' and trashed = false"
+    page_token = None
+    images = []
+    while True:
+        resp = service.files().list(
+            q=q,
+            spaces="drive",
+            # request thumbnailLink as well
+            fields="nextPageToken, files(id, name, mimeType, thumbnailLink)",
+            pageSize=100,
+            pageToken=page_token
+        ).execute()
+        for f in resp.get("files", []):
+            images.append({
+                "id": f["id"],
+                "name": f.get("name"),
+                "mimeType": f.get("mimeType"),
+                "thumbnail": f.get("thumbnailLink"),  
+                # workers should download with Authorization header:
+                "download_url": f"https://www.googleapis.com/drive/v3/files/{f['id']}?alt=media"
+            })
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
     return images

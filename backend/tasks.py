@@ -10,11 +10,11 @@ import base64
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
 from redisClient import RedisClient
-from db import add_image, get_project, get_db, insert_faces, update_project_status_if_done, mark_image_processed, update_project_status
+from db import add_image, get_project, get_db, insert_faces, update_project_status_if_done, mark_image_processed, update_project_status, get_unprocessed_images
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
 from googleapiclient.discovery import build
-from helpers import credentials_for_user
+from helpers import credentials_for_user, get_drive_images
 from sqlalchemy.exc import IntegrityError
 import os 
 
@@ -47,7 +47,7 @@ def ensure_model():
         from insightface.app import FaceAnalysis
         ctx_id = int(os.getenv("CTX_ID", os.getenv("CTX_ID", -1)))
         det_size = tuple(map(int, os.getenv("DET_SIZE", os.getenv("DET_SIZE", "640,640")).split(",")))
-        fa = FaceAnalysis(allowed_modules=["detection", "recognition"])
+        fa = FaceAnalysis(allowed_modules=["detection", "recognition"], providers=[ 'CPUExecutionProvider','CUDAExecutionProvider'])
         fa.prepare(ctx_id=ctx_id, det_size=det_size)
 
 def download_image(download_url: str, access_token: str | None) -> np.ndarray:
@@ -133,41 +133,27 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
         # get all image links from the folder using google drive api and push them on the queue to process 
 
         try:
-            service = build("drive", "v3", credentials=creds, cache_discovery=False)
-            # query: files in the folder and that are images
-            q = f"'{folder_id}' in parents and mimeType contains 'image/' and trashed = false"
-            page_token = None
-            images = []
-            while True:
-                resp = service.files().list(
-                    q=q,
-                    spaces="drive",
-                    # request thumbnailLink as well
-                    fields="nextPageToken, files(id, name, mimeType, thumbnailLink)",
-                    pageSize=100,
-                    pageToken=page_token
-                ).execute()
-                for f in resp.get("files", []):
-                    images.append({
-                        "id": f["id"],
-                        "name": f.get("name"),
-                        "mimeType": f.get("mimeType"),
-                        "thumbnail": f.get("thumbnailLink"),  
-                        # workers should download with Authorization header:
-                        "download_url": f"https://www.googleapis.com/drive/v3/files/{f['id']}?alt=media"
-                    })
-                page_token = resp.get("nextPageToken")
-                if not page_token:
-                    break
-
+            images = get_drive_images(folder_id=folder_id, creds=creds)
+            
             # optionally store image list in redis or enqueue tasks here
             # batch create images in db before pushing to the queue 
 
             # redis_client.set_dict(f"project_images:{project_id}", {"count": len(images)})
             # enqueu the images to the processing queue 
+
+            # get the list of images already in db to avoid duplicates
+            db_images = db.query(Image.drive_file_id).filter(Image.project_id == project_id).all()
+            existing_drive_file_ids = set(img.drive_file_id for img in db_images)
+
+            print(existing_drive_file_ids)
+            
         
             for img in images:
                 try:
+                    # deduplication check 
+                    if img["id"] in existing_drive_file_ids:
+                        continue
+                    
                     add_image(
                         db=db,
                         project_id=project_id,
@@ -177,30 +163,29 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                         download_url=img.get("download_url"),
                         thumbnail_link=img.get("thumbnail"),
                     )
+
                 except IntegrityError as e:
                     db.rollback()
                     # image already exists, skip
                     continue
 
-            # get images from db to ensure we have their uuids
-            db_images = db.query(Image).filter(Image.project_id == project_id).all()
-            images = []
-        
-            for idx, img in enumerate(db_images):
-                async_result = celery.send_task(
-                    "tasks.process_image",
-                    args=(
-                        img.id,
-                        img.drive_file_id,
-                        img.download_url,
-                        creds.token,
-                        img.project_id,
-                        user_id
-                    ),
-                    queue="image_tasks",
-                )
-                print(f"Enqueued image {img.id} task id: {async_result.id}")
+            # now get all unprocessed images from the db and put them on the processing queue 
+            unprocessed_db_images = get_unprocessed_images(db=db, project_id=project_id)
+            for img in unprocessed_db_images:
 
+                async_result = celery.send_task(
+                        "tasks.process_image",
+                        args=(
+                            img.id,
+                            img.drive_file_id,
+                            img.download_url,
+                            creds.token,
+                            img.project_id,
+                            user_id
+                            ),
+                            queue="image_tasks",
+                        )
+                print(f"Enqueued image {img.drive_file_id} task id: {async_result.id}")
                 
             redis_client.set_key(f"total_images:{project_id}",len(db_images))
             redis_client.set_key(f"processed_images:{project_id}", 0)

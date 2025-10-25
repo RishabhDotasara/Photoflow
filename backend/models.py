@@ -12,13 +12,21 @@ from pgvector.sqlalchemy import Vector
 import os 
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://youruser:yourpass@localhost:5432/photoflow_db")
-engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20, pool_pre_ping=True,pool_recycle=3600)
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(
+    DATABASE_URL, 
+    pool_size=5,          # Reduced pool size
+    max_overflow=10,      # Reduced overflow
+    pool_pre_ping=True,   # Test connections before use
+    pool_recycle=1800,    # Recycle connections every 30 minutes
+    pool_reset_on_return='commit',  # Reset connections on return
+    echo=False            # Set to True for SQL debugging
+)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 Base = declarative_base()
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 def gen_uuid():
     return str(uuid.uuid4())

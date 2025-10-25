@@ -10,7 +10,7 @@ interface ProjectCardProps {
     id:string,
     projectName: string
     totalPhotos: number
-    status: "waiting" | "processing" | "done"
+    status: "waiting" | "processing" | "completed"
     progress?: number
 }
 
@@ -27,7 +27,7 @@ const statusConfig = {
         color: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
         dotColor: "bg-amber-500",
     },
-    done: {
+    completed: {
         label: "Done",
         icon: CheckCircle2,
         color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
@@ -37,7 +37,7 @@ const statusConfig = {
 
 export function ProjectCard({id, projectName, totalPhotos, status, progress = 0 }: ProjectCardProps) {
     const config = statusConfig[status]
-    const StatusIcon = config.icon
+    const StatusIcon = config?.icon
 
     return (
         <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -46,9 +46,9 @@ export function ProjectCard({id, projectName, totalPhotos, status, progress = 0 
                     <div className="flex-1 min-w-0">
                         <Link href={"my-projects/" + id}><h3 className="font-semibold text-lg text-foreground truncate hover:underline">{projectName}</h3></Link>
                     </div>
-                    <Badge className={`${config.color} border-0 flex items-center gap-1.5 whitespace-nowrap`}>
-                        <span className={`w-2 h-2 rounded-full ${config.dotColor} animate-pulse`} />
-                        {config.label}
+                    <Badge className={`${config?.color} border-0 flex items-center gap-1.5 whitespace-nowrap`}>
+                        <span className={`w-2 h-2 rounded-full ${config?.dotColor} animate-pulse`} />
+                        {config?.label}
                     </Badge>
                 </div>
             </CardHeader>
@@ -82,11 +82,11 @@ export function ProjectCard({id, projectName, totalPhotos, status, progress = 0 
 
                 {/* Status Message */}
                 <div className="flex items-center gap-2 pt-2 border-t border-border">
-                    <StatusIcon className="w-4 h-4 text-muted-foreground" />
+                    {StatusIcon && <StatusIcon className="w-4 h-4 text-muted-foreground" />}
                     <span className="text-sm text-muted-foreground">
                         {status === "waiting" && "Click Start Processing to begin"}
                         {status === "processing" && "Processing and organizing photos..."}
-                        {status === "done" && "All photos uploaded and processed"}
+                        {status === "completed" && "All photos uploaded and processed"}
                     </span>
                 </div>
             </CardContent>

@@ -8,11 +8,12 @@ import uuid
 import json 
 from celery_config import celery
 from typing import Optional, Dict, Any
+from sqlalchemy.exc import IntegrityError
 
 # file imports 
 from redisClient import RedisClient
-from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id, add_image, get_project, clear_project_images, user_exists
-from helpers import credentials_for_user, find_similar_images
+from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id,get_unprocessed_images, add_image, get_project, clear_project_images, user_exists
+from helpers import credentials_for_user, get_drive_images, find_similar_images
 from clerk import set_public_user_id
 
 #google drive api imports 
@@ -310,6 +311,31 @@ def get_project_endpoint(project_id: str):
         )
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        
+        images = get_drive_images(folder_id=project.drive_folder_id, creds=credentials_for_user(project.user_id, redis_client)) if project.drive_folder_id else []
+        out_of_sync = len(images) != len(project.images)
+        image_ids = [img.id for img in project.images]
+
+        # if out of sync, just insert those imagse back in the db with processed set to false 
+        if out_of_sync:
+            for img in images:
+                if img['id'] not in image_ids:
+                    try:
+                        add_image(
+                            db=db,
+                            project_id=project.id,
+                            drive_file_id=img["id"],
+                            name=img.get("name"),
+                            mime_type=img.get("mimeType"),
+                            download_url=img.get("download_url"),
+                            thumbnail_link=img.get("thumbnail"),
+                        )
+                    except IntegrityError as e:
+                        db.rollback()
+                        # image already exists, skip
+                        continue
+        
+        
         project_data = {
             "project_id": project.id,
             "user_id": project.user_id,
@@ -319,6 +345,7 @@ def get_project_endpoint(project_id: str):
             "image_count": len(project.images),
             "created_at": project.created_at,
             "updated_at": project.updated_at,
+            "out_of_sync": out_of_sync 
         }
     return {"status": "ok", "project": project_data}
 
@@ -490,6 +517,13 @@ async def upload_selfie(
     try:
         print(f"Processing uploaded selfie for project {project_id}, filename: {file.filename}")
         embeddings = process_image(image_bytes)
+
+        if not embeddings:
+            return {
+                "status": "ok",
+                "matching_images_count": 0,
+                "matching_images": []
+            }
  
         with get_session() as db:
             matching_images = find_similar_images(db=db, query_embedding=embeddings[0], project_id=project_id)
@@ -543,3 +577,24 @@ def get_drive_image(file_id: str, user_id: str, download: Optional[bool] = False
     }
 
     return Response(content=buf.read(), media_type=mime_type, headers=headers)
+
+@app.get("/get-progress")
+def get_progress(project_id: str):
+    total_images = redis_client.get_key("total_images:${project_id}")
+    processed_images = redis_client.get_key(f"processed_images:{project_id}")
+    return {
+        "project_id": project_id,
+        "total_images": int(total_images) if total_images else 0,
+        "processed_images": int(processed_images) if processed_images else 0,
+        "percent_complete": (int(processed_images) / int(total_images) * 100) if total_images and processed_images else 0
+    }
+
+@app.get("/resync-drive-folder")
+def resync_drive_folder(user_id: str, project_id: str):
+    # get all unprocessed images from the db 
+    async_result = celery.send_task(
+        "tasks.list_folder_and_enqueue",
+        args=(project_id, user_id),
+        queue="folder_tasks",
+    )
+    return {"status": "Folder resyncing started.", "folder_task_id": async_result.id}
