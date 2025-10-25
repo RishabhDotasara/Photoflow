@@ -85,12 +85,11 @@ def process_image(image_id:str, drive_file_id: str, download_url: str, access_to
 
             # increment the processed count
             processed = redis_client.increment(f'processed_images:{project_id}')
-            total = int(redis_client.get_key(f'total_images:{project_id}')
-)
-            # check the counter for project completion 
-            # redis_dict = redis_client.get_dict(f"{_project_folder_namespace}:{project_id}_counter")
+            total_key = redis_client.get_key(f'total_images:{project_id}')
+            total = int(total_key) if total_key else 0
+            
             print(f"Processed images for project {project_id}: {processed}/{total}")
-            if total == processed:
+            if total > 0 and total == processed:
                 print("Project Completed. Updating status.")
                 update_project_status(db, project_id, "completed")
 
@@ -120,15 +119,14 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
     with get_session() as db:
         # get the folder_id first from redis 
         proj = redis_client.get_dict(f"{_project_folder_namespace}:{project_id}")
-        folder_id = proj.get("folder_id")
-        if not proj:
-            # check in db as well 
-            proj = get_project(db=next(get_db()), project_id=project_id)
-            folder_id = proj.drive_folder_id if proj else None
-            if not proj:
-                raise HTTPException(status_code=400, detail="Project not found or folder ID not set.")
+        folder_id = proj.get("folder_id") if proj else None
+        
         if not folder_id:
-            raise HTTPException(status_code=400, detail="Folder ID not set for the project.")
+            # check in db as well 
+            proj = get_project(db=db, project_id=project_id)
+            folder_id = proj.drive_folder_id if proj else None
+            if not folder_id:
+                raise HTTPException(status_code=400, detail="Project not found or folder ID not set.")
         creds = credentials_for_user(user_id, redis_client)
         # get all image links from the folder using google drive api and push them on the queue to process 
 
@@ -171,26 +169,29 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
 
             # now get all unprocessed images from the db and put them on the processing queue 
             unprocessed_db_images = get_unprocessed_images(db=db, project_id=project_id)
+            
             for img in unprocessed_db_images:
-
-                async_result = celery.send_task(
-                        "tasks.process_image",
-                        args=(
-                            img.id,
-                            img.drive_file_id,
-                            img.download_url,
-                            creds.token,
-                            img.project_id,
-                            user_id
-                            ),
-                            queue="image_tasks",
-                        )
-                print(f"Enqueued image {img.drive_file_id} task id: {async_result.id}")
+                try:
+                    async_result = celery.send_task(
+                            "tasks.process_image",
+                            args=(
+                                img.id,
+                                img.drive_file_id,
+                                img.download_url,
+                                creds.token,
+                                img.project_id,
+                                user_id
+                                )
+                            )
+                    print(f"Enqueued image {img.drive_file_id} task id: {async_result.id}")
+                except Exception as e:
+                    print(f"Failed to enqueue image {img.drive_file_id}: {e}")
+                    continue
                 
-            redis_client.set_key(f"total_images:{project_id}",len(db_images))
+            redis_client.set_key(f"total_images:{project_id}",len(unprocessed_db_images))
             redis_client.set_key(f"processed_images:{project_id}", 0)
 
             update_project_status(db=db, project_id=project_id, status="processing")
-            return {"status": "ok", "count": len(images), "images": images}
+            return {"status": "ok", "count": len(unprocessed_db_images), "images": unprocessed_db_images}
         except Exception as e:
             raise RuntimeError(f"Failed to list folder images: {str(e)}")
