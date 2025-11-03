@@ -58,6 +58,38 @@ def upload_file_to_s3(file_name, bucket, object_name=None):
         print(f"Failed to upload {file_name} to {bucket}/{object_name}: {e}")
         return False
     
+# upload file to a specific folder in s3 from memory
+def upload_file_to_s3_folder_memory(file_content, bucket, folder_path, object_name=None):
+    """
+    Upload a file content to a specific folder in an S3 bucket
+
+    :param file_content: File content in bytes
+    :param bucket: Bucket to upload to
+    :param folder_path: Folder path in S3 (e.g., "documents/proposals")
+    :param object_name: S3 object name. If not specified then 'uploaded_file' is used
+    :return: True if file was uploaded, else False
+    """
+    if object_name is None:
+        object_name = 'uploaded_file'
+    
+    # Ensure folder path ends with a slash and combine with object name
+    if folder_path and not folder_path.endswith('/'):
+        folder_path += '/'
+    
+    full_object_name = f"{folder_path}{object_name}"
+    
+    try:
+        s3_client.put_object(Bucket=bucket, Key=full_object_name, Body=file_content)
+        print(f"File content uploaded to {bucket}/{full_object_name}")
+        return True
+    except (NoCredentialsError, PartialCredentialsError) as e:
+        print(f"Credentials error: {e}")
+        return False
+    except Exception as e:
+        print(f"Failed to upload content to {bucket}/{full_object_name}: {e}")
+        return False
+
+
 def upload_file_to_s3_folder(file_name, bucket, folder_path, object_name=None):
     """
     Upload a file to a specific folder in an S3 bucket
@@ -211,4 +243,23 @@ def generate_presigned_url(bucket, object_name, expiration=3600):
 
 if __name__ == "__main__":
     # Example usage
-    bucket_name = "your-bucket-name"
+    bucket_name = "researchconclave"
+
+    # Test if bucket exists
+    try:
+        s3_client.head_bucket(Bucket=bucket_name)
+        print(f"Bucket {bucket_name} exists and is accessible.")
+    except Exception as e:
+        print(f"Bucket {bucket_name} does not exist or is not accessible: {e}")
+    
+    # list files in a folder
+    folder = "2025/jhsdvf"
+    files = list_files_in_s3_folder(bucket_name, folder)
+    print(f"Files in folder {folder}: {files}")
+
+    # upload a file to a folder
+    local_file = "test.txt"
+    upload_success = upload_file_to_s3_folder(local_file, bucket_name, folder)
+    print(f"Upload success: {upload_success}")
+
+    # get presigned url
