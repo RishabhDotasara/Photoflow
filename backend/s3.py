@@ -157,9 +157,58 @@ def get_file_from_s3_url(s3_url):
     print(f"Parsed URL - Bucket: {bucket}, Object: {object_key}")
     return get_file_from_s3(bucket, object_key)
 
+# query file names in a bucket folder
+def list_files_in_s3_folder(bucket, folder_path):
+    """
+    List all files in a specific folder in an S3 bucket
 
+    :param bucket: Bucket name
+    :param folder_path: Folder path in S3 (e.g., "documents/proposals")
+    :return: List of file names in the specified folder
+    """
+    try:
+        if folder_path and not folder_path.endswith('/'):
+            folder_path += '/'
+        
+        paginator = s3_client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(Bucket=bucket, Prefix=folder_path)
+
+        file_names = []
+        for page in page_iterator:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    file_key = obj['Key']
+                    # Exclude the folder path itself
+                    if file_key != folder_path:
+                        file_names.append(file_key)
+        
+        return file_names
+    except Exception as e:
+        print(f"Failed to list files in {bucket}/{folder_path}: {e}")
+        return []
+    
+
+# presigned url generation
+def generate_presigned_url(bucket, object_name, expiration=3600):
+    """
+    Generate a presigned URL to share an S3 object
+
+    :param bucket: Bucket name
+    :param object_name: S3 object name
+    :param expiration: Time in seconds for the presigned URL to remain valid
+    :return: Presigned URL as string. If error, returns None.
+    """
+    try:
+        response = s3_client.generate_presigned_url('get_object',
+                                                    Params={'Bucket': bucket,
+                                                            'Key': object_name},
+                                                    ExpiresIn=expiration)
+    except Exception as e:
+        print(f"Failed to generate presigned URL for {bucket}/{object_name}: {e}")
+        return None
+
+    return response
 
 if __name__ == "__main__":
     # Example usage
     bucket_name = "your-bucket-name"
-    
