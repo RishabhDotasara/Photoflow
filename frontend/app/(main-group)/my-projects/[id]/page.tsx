@@ -41,62 +41,62 @@ export default function ProjectDescriptionPage() {
         shareLink: "https://photohub.app/share/summer-wedding-2025",
     }
 
-    const listFoldersQuery = useQuery({
-        queryKey: ['folders', project.id],
-        queryFn: async () => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/list-folders?user_id=${user?.publicMetadata?.userId}`);
-            if (!resp.ok) {
-            if (resp.status === 500){
-                // so this probably happens because the refresh token is invalid, so take the user to onboarding flow again.
-                router.push("/onboard-user?redirect_url=/my-projects/"+project.id);
-                toast.error("Please re-authorize Google Drive access to continue.");
-                return;
-            }
-                // window.location.href = "/onboard-user?redirect_url=/my-projects/"+project.id;
-            }
-            const resJson = await resp.json();
-            console.log(resJson);
-            return resJson.folders;
-        },
+    // const listFoldersQuery = useQuery({
+    //     queryKey: ['folders', project.id],
+    //     queryFn: async () => {
+    //         const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/list-folders?user_id=${user?.publicMetadata?.userId}`);
+    //         if (!resp.ok) {
+    //         if (resp.status === 500){
+    //             // so this probably happens because the refresh token is invalid, so take the user to onboarding flow again.
+    //             router.push("/onboard-user?redirect_url=/my-projects/"+project.id);
+    //             toast.error("Please re-authorize Google Drive access to continue.");
+    //             return;
+    //         }
+    //             // window.location.href = "/onboard-user?redirect_url=/my-projects/"+project.id;
+    //         }
+    //         const resJson = await resp.json();
+    //         console.log(resJson);
+    //         return resJson.folders;
+    //     },
         
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: true,
-        enabled: user?.publicMetadata?.userId !== undefined,
-    }) 
+    //     staleTime: 5 * 60 * 1000, // 5 minutes
+    //     refetchOnWindowFocus: true,
+    //     enabled: user?.publicMetadata?.userId !== undefined,
+    // }) 
 
-    const isFolderSelectedQuery = useQuery({
-        queryKey: ['is-folder-set', project.id],
-        queryFn: async () => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/folder-drive-id-set?project_id=${project.id}`);
-            if (!resp.ok) {
-                throw new Error("Failed to fetch folder status");
-            }
-            const resJson = await resp.json();
-            // console.log(resJson);
-            return resJson;
-        },
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: false,
-        // retry: 1,
+    // const isFolderSelectedQuery = useQuery({
+    //     queryKey: ['is-folder-set', project.id],
+    //     queryFn: async () => {
+    //         const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/folder-drive-id-set?project_id=${project.id}`);
+    //         if (!resp.ok) {
+    //             throw new Error("Failed to fetch folder status");
+    //         }
+    //         const resJson = await resp.json();
+    //         // console.log(resJson);
+    //         return resJson;
+    //     },
+    //     staleTime: 5 * 60 * 1000, // 5 minutes
+    //     refetchOnWindowFocus: false,
+    //     // retry: 1,
 
-    })
+    // })
 
-    const saveFolderIdMutation = useMutation({
-        mutationFn: async (folder: any) => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/set-folder-id?project_id=${project.id}&folder_id=${folder.id}&user_id=${user?.publicMetadata?.userId}`)
-            if (!resp.ok) {
-                throw new Error("Failed to save folder ID")
-            }
-            return resp.json()
-        },
-        onSuccess: () => {
-            toast.success("Folder linked successfully")
-            isFolderSelectedQuery.refetch();
-        },
-        onError: () => {
-            toast.error("Failed to link folder")
-        },
-    })
+    // const saveFolderIdMutation = useMutation({
+    //     mutationFn: async (folder: any) => {
+    //         const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/set-folder-id?project_id=${project.id}&folder_id=${folder.id}&user_id=${user?.publicMetadata?.userId}`)
+    //         if (!resp.ok) {
+    //             throw new Error("Failed to save folder ID")
+    //         }
+    //         return resp.json()
+    //     },
+    //     onSuccess: () => {
+    //         toast.success("Folder linked successfully")
+    //         isFolderSelectedQuery.refetch();
+    //     },
+    //     onError: () => {
+    //         toast.error("Failed to link folder")
+    //     },
+    // })
 
     
     const getProjectQuery = useQuery({
@@ -218,10 +218,8 @@ export default function ProjectDescriptionPage() {
                             {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
                         </Badge> */}
                         {getProjectQuery.data?.status === "processing" && <Badge className="bg-amber-400">Processing</Badge>}
-                        {getProjectQuery.data?.status === "waiting" && (isFolderSelectedQuery.data?.bool ?<Button onClick={()=>{startAnalysisMutation.mutate();getProjectQuery.refetch()}} disabled={startAnalysisMutation.isPending}>
-                            
-                            {startAnalysisMutation.isPending ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-                            Start Processing</Button> : <Badge className="bg-blue-400">Select a folder to start analysis</Badge>)}
+                        
+                        <Button disabled={getProjectQuery.data?.status === "processing"} onClick={() => {startAnalysisMutation.mutate()}}>Start Analysis</Button>
                         {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>}
                     </div>
 
@@ -279,7 +277,7 @@ export default function ProjectDescriptionPage() {
                         
                         <ProcessingPhases phases={phases} activePhaseId={statusMap[getProjectQuery.data?.status || "idle"] || "2"} />
                         
-                        {isFolderSelectedQuery.data ? <FolderSelector
+                        {/* {isFolderSelectedQuery.data ? <FolderSelector
                             folders={listFoldersQuery.data}
                             initialFolder={isFolderSelectedQuery.data.folder_info}
                             isSaved={isFolderSelectedQuery.data.bool}
@@ -288,12 +286,12 @@ export default function ProjectDescriptionPage() {
                             }}
                         />:(
                             <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
-                        )}
+                        )} */}
                     </div>
 
                     {/* Right Column - Shareable Link */}
                     <div>
-                        <ShareableLinkCard shareLink={`${window?.location.origin}/guest/${project.id}`} projectName={project.name} />
+                        <ShareableLinkCard shareLink={`http://localhost:3000/guest/${project.id}`} projectName={project.name} />
                     </div>
                 </div>
             </main>

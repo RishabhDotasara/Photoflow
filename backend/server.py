@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 # file imports 
 from redisClient import RedisClient
-from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id,get_unprocessed_images, add_image, get_project, clear_project_images, user_exists
+from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id,get_unprocessed_images, add_image, get_project, clear_project_images, user_exists, check_project_exists
 from helpers import credentials_for_user, get_drive_images, find_similar_images
 from clerk import set_public_user_id
 
@@ -291,10 +291,17 @@ def create_project_endpoint(request: ProjectCreateRequest):
     # print("Creating project for user:", user_id, "with name:", name)
     from db import create_project
     with get_session() as db:
+        # check if the project with this name exists or not 
+        project = check_project_exists(db=db, user_id=user_id, name=name)
+
+        if project:
+            raise HTTPException(status_code=400, detail="Project with this name already exists for the user")
+
         project = create_project(
             db=db,
             user_id=user_id,
-            name=name
+            name=name,
+            s3_folder_name=user_id + "/" + name
         )
     return {"status": "ok", "project_id": project.id, "name": project.name}
 
@@ -312,28 +319,28 @@ def get_project_endpoint(project_id: str):
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        images = get_drive_images(folder_id=project.drive_folder_id, creds=credentials_for_user(project.user_id, redis_client)) if project.drive_folder_id else []
-        out_of_sync = len(images) != len(project.images)
-        image_ids = [img.id for img in project.images]
+        # images = get_drive_images(folder_id=project.drive_folder_id, creds=credentials_for_user(project.user_id, redis_client)) if project.drive_folder_id else []
+        # out_of_sync = len(images) != len(project.images)
+        # image_ids = [img.id for img in project.images]
 
         # if out of sync, just insert those imagse back in the db with processed set to false 
-        if out_of_sync:
-            for img in images:
-                if img['id'] not in image_ids:
-                    try:
-                        add_image(
-                            db=db,
-                            project_id=project.id,
-                            drive_file_id=img["id"],
-                            name=img.get("name"),
-                            mime_type=img.get("mimeType"),
-                            download_url=img.get("download_url"),
-                            thumbnail_link=img.get("thumbnail"),
-                        )
-                    except IntegrityError as e:
-                        db.rollback()
-                        # image already exists, skip
-                        continue
+        # if out_of_sync:
+        #     for img in images:
+        #         if img['id'] not in image_ids:
+        #             try:
+        #                 add_image(
+        #                     db=db,
+        #                     project_id=project.id,
+        #                     drive_file_id=img["id"],
+        #                     name=img.get("name"),
+        #                     mime_type=img.get("mimeType"),
+        #                     download_url=img.get("download_url"),
+        #                     thumbnail_link=img.get("thumbnail"),
+        #                 )
+        #             except IntegrityError as e:
+        #                 db.rollback()
+        #                 # image already exists, skip
+        #                 continue
         
         
         project_data = {
@@ -345,7 +352,7 @@ def get_project_endpoint(project_id: str):
             "image_count": len(project.images),
             "created_at": project.created_at,
             "updated_at": project.updated_at,
-            "out_of_sync": out_of_sync 
+            "out_of_sync": False 
         }
     return {"status": "ok", "project": project_data}
 
@@ -524,7 +531,7 @@ async def upload_selfie(
                 "matching_images_count": 0,
                 "matching_images": []
             }
- 
+        print("Embedding: ", embeddings)
         with get_session() as db:
             matching_images = find_similar_images(db=db, query_embedding=embeddings[0], project_id=project_id)
 

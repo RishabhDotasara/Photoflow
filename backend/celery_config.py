@@ -2,8 +2,8 @@ from celery import Celery
 from kombu import Queue
 import os 
 
-BROKER = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+BROKER = "redis://127.0.0.1:6379/0"
+BACKEND = "redis://127.0.0.1:6379/1"
 
 celery = Celery("photoflow", broker=BROKER, backend=BACKEND)
 import tasks 
