@@ -89,6 +89,27 @@ def upload_file_to_s3_folder_memory(file_content, bucket, folder_path, object_na
         print(f"Failed to upload content to {bucket}/{full_object_name}: {e}")
         return False
 
+# check if a file exists in a specific folder in s3
+def check_file_exists_in_s3_folder(bucket, folder_path, object_name):
+    """
+    Check if a file exists in a specific folder in an S3 bucket
+
+    :param bucket: Bucket name
+    :param folder_path: Folder path in S3 (e.g., "documents/proposals")
+    :param object_name: S3 object name
+    :return: True if file exists, else False
+    """
+    if folder_path and not folder_path.endswith('/'):
+        folder_path += '/'
+    
+    full_object_name = f"{folder_path}{object_name}"
+    
+    try:
+        s3_client.head_object(Bucket=bucket, Key=full_object_name)
+        return True
+    except Exception as e:
+        return False
+
 
 def upload_file_to_s3_folder(file_name, bucket, folder_path, object_name=None):
     """
