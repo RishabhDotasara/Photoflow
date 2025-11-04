@@ -103,7 +103,7 @@ export function ShareableLinkCard({ shareLink, projectName }: ShareableLinkCardP
                 </div>
 
                 <Separator />
-
+{/* 
                 <div className="space-y-3">
                     <p className="text-sm font-medium">Share via</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -124,7 +124,7 @@ export function ShareableLinkCard({ shareLink, projectName }: ShareableLinkCardP
                             <span>Send via Email</span>
                         </Button>
                     </div>
-                </div>
+                </div> */}
 
                 <div className="bg-muted/50 border border-border/50 rounded-lg p-4">
                     <p className="text-sm text-muted-foreground leading-relaxed">

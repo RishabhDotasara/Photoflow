@@ -16,6 +16,7 @@ import {
 } from '@clerk/nextjs'
 import QueryProvider from "@/providers/queryProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/provider/theme-provider";
 
 
 const geistSans = Geist({

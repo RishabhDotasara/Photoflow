@@ -4,7 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, BadgeInfoIcon, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ProcessingPhases } from "@/components/processing-phases"
 
@@ -15,11 +15,21 @@ import { toast } from "sonner"
 import { FolderSelector } from "@/components/drive-folder-info"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { IconReload } from "@tabler/icons-react"
+import { Dropzone, DropzoneContent, DropzoneEmptyState } from "@/components/ui/shadcn-io/dropzone"
 export default function ProjectDescriptionPage() {
     const [processingProgress, setProcessingProgress] = useState(0)
     const params = useParams<{id:string}>();
     const {user} = useUser();
     const router = useRouter();
+    const [files, setFiles] = useState<File[]>([]);
+    const offset = useRef(0); 
+
+    const uploadImagesMutation = useMutation({
+        mutationFn: async (files: File[]) => {
+
+        }
+    })
 
     interface Folder {
         folder_id: string
@@ -41,63 +51,6 @@ export default function ProjectDescriptionPage() {
         shareLink: "https://photohub.app/share/summer-wedding-2025",
     }
 
-    const listFoldersQuery = useQuery({
-        queryKey: ['folders', project.id],
-        queryFn: async () => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/list-folders?user_id=${user?.publicMetadata?.userId}`);
-            if (!resp.ok) {
-            if (resp.status === 500){
-                // so this probably happens because the refresh token is invalid, so take the user to onboarding flow again.
-                router.push("/onboard-user?redirect_url=/my-projects/"+project.id);
-                toast.error("Please re-authorize Google Drive access to continue.");
-                return;
-            }
-                // window.location.href = "/onboard-user?redirect_url=/my-projects/"+project.id;
-            }
-            const resJson = await resp.json();
-            console.log(resJson);
-            return resJson.folders;
-        },
-        
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: true,
-        enabled: user?.publicMetadata?.userId !== undefined,
-    }) 
-
-    const isFolderSelectedQuery = useQuery({
-        queryKey: ['is-folder-set', project.id],
-        queryFn: async () => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/folder-drive-id-set?project_id=${project.id}`);
-            if (!resp.ok) {
-                throw new Error("Failed to fetch folder status");
-            }
-            const resJson = await resp.json();
-            // console.log(resJson);
-            return resJson;
-        },
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        refetchOnWindowFocus: false,
-        // retry: 1,
-
-    })
-
-    const saveFolderIdMutation = useMutation({
-        mutationFn: async (folder: any) => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/set-folder-id?project_id=${project.id}&folder_id=${folder.id}&user_id=${user?.publicMetadata?.userId}`)
-            if (!resp.ok) {
-                throw new Error("Failed to save folder ID")
-            }
-            return resp.json()
-        },
-        onSuccess: () => {
-            toast.success("Folder linked successfully")
-            isFolderSelectedQuery.refetch();
-        },
-        onError: () => {
-            toast.error("Failed to link folder")
-        },
-    })
-
     
     const getProjectQuery = useQuery({
         queryKey: ['project', project.id],
@@ -112,6 +65,7 @@ export default function ProjectDescriptionPage() {
         },
         staleTime: 1 * 60 * 1000, // 5 minutes
         refetchOnWindowFocus: false,
+        refetchInterval:5 * 60 * 1000,
         enabled: user?.publicMetadata?.userId !== undefined ,
     })
 
@@ -125,6 +79,9 @@ export default function ProjectDescriptionPage() {
             const resJson = await resp.json();
             console.log("Progress:", resJson);
             const fraction = resJson.processed_images / getProjectQuery.data?.image_count;
+            if (fraction == 1){
+                getProjectQuery.refetch();
+            }
             return fraction * 100;
         },
         staleTime: 2000, // 30 seconds
@@ -143,6 +100,7 @@ export default function ProjectDescriptionPage() {
                 throw new Error("Failed to start analysis");
             }
             // refetch the project status and everything
+            getProjectQuery.refetch();
 
             return resp.json();
         },
@@ -218,15 +176,16 @@ export default function ProjectDescriptionPage() {
                             {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
                         </Badge> */}
                         {getProjectQuery.data?.status === "processing" && <Badge className="bg-amber-400">Processing</Badge>}
-                        {getProjectQuery.data?.status === "waiting" && (isFolderSelectedQuery.data?.bool ?<Button onClick={()=>{startAnalysisMutation.mutate();getProjectQuery.refetch()}} disabled={startAnalysisMutation.isPending}>
-                            
-                            {startAnalysisMutation.isPending ? <Loader2 className="animate-spin h-4 w-4 mr-2"/> : null}
-                            Start Processing</Button> : <Badge className="bg-blue-400">Select a folder to start analysis</Badge>)}
-                        {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>}
+                        
+                        <div className="flex justify-center items-center gap-4">
+                        <Button variant={"outline"} onClick={()=>{getProjectQuery.refetch()}} disabled={getProjectQuery.isRefetching}><IconReload/></Button>
+                        <Button disabled={getProjectQuery.data?.status === "processing"} onClick={() => {startAnalysisMutation.mutate()}}>Start Analysis</Button>
+                        </div>
+                        {/* {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>} */}
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-4">
                         <Card>
                             <CardHeader className="text-muted-foreground">
                                 Total Photos
@@ -279,7 +238,7 @@ export default function ProjectDescriptionPage() {
                         
                         <ProcessingPhases phases={phases} activePhaseId={statusMap[getProjectQuery.data?.status || "idle"] || "2"} />
                         
-                        {isFolderSelectedQuery.data ? <FolderSelector
+                        {/* {isFolderSelectedQuery.data ? <FolderSelector
                             folders={listFoldersQuery.data}
                             initialFolder={isFolderSelectedQuery.data.folder_info}
                             isSaved={isFolderSelectedQuery.data.bool}
@@ -288,12 +247,23 @@ export default function ProjectDescriptionPage() {
                             }}
                         />:(
                             <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
-                        )}
+                        )} */}
+                       <Dropzone
+                        accept={{'image/*':[]}}
+                        onDrop={()=>{uploadImagesMutation.mutate(files)}}
+                        onError={(e)=>{toast.error("Error Uploading Files, Please try again!", {description: e.message})}}
+                        multiple={true}
+                        src={files}
+                        maxFiles={20000}
+                       >
+                        <DropzoneContent />
+                        <DropzoneEmptyState/>
+                       </Dropzone>
                     </div>
 
                     {/* Right Column - Shareable Link */}
                     <div>
-                        <ShareableLinkCard shareLink={`${window?.location.origin}/guest/${project.id}`} projectName={project.name} />
+                        <ShareableLinkCard shareLink={`http://localhost:3000/guest/${project.id}`} projectName={project.name} />
                     </div>
                 </div>
             </main>

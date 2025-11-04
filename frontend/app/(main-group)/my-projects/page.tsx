@@ -3,7 +3,7 @@
 import { ProjectCard } from "@/components/dashboard-card"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { File, Plus } from "lucide-react"
+import { File, Loader2, Plus } from "lucide-react"
 import { CreateProjectModal } from "@/components/create-project-modal"
 import { useUser } from "@clerk/nextjs"
 import { useMutation, useQuery } from "@tanstack/react-query"
@@ -152,6 +152,11 @@ export default function ProjectsPage() {
                         actionLabel="Add Project"
                         onAction={() => setIsModalOpen(true)}
                     />
+                )}
+                {listProjectsQuery.isLoading && (
+                    <p className="text-center text-muted-foreground">
+                        <Loader2 className="animate-spin"/>
+                    </p>
                 )}
             </main>
 
