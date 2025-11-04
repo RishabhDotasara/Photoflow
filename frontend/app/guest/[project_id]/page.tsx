@@ -168,7 +168,7 @@ export default function SelfieCapture() {
                                 className="group relative aspect-square rounded-xl overflow-hidden bg-muted shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]"
                             >
                                 <img
-                                    src={downloadURL(item.image.drive_file_id)}
+                                    src={item.image.download_url}
                                     alt={`Generated image ${index + 1}`}
                                     className="w-full h-full object-cover"
                                     loading="lazy"

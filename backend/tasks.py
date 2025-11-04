@@ -73,7 +73,7 @@ def process_image(image_id:str, download_url: str,project_id: str):
         img_bytes = download_file_from_presigned_url(download_url)
         img_array = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        # cv2.imwrite(filename=image_id+".png", img=img)
+        cv2.imwrite(filename=image_id+".png", img=img)
         ensure_model()
         faces = fa.get(img)
         
@@ -97,7 +97,7 @@ def process_image(image_id:str, download_url: str,project_id: str):
             print(f"Processed images for project {project_id}: {processed}/{total}")
             if total > 0 and total == processed:
                 print("Project Completed. Updating status.")
-                update_project_status(db, project_id, "completed")
+                # update_project_status(db, project_id, "completed")
 
             mark_image_processed(db, image_id)
             
@@ -201,7 +201,7 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                             "tasks.process_image",
                             args=(
                                 img.id,
-                                download_url,
+                                img.download_url,
                                 img.project_id,
                                 )
                             )
@@ -214,6 +214,6 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
             redis_client.set_key(f"processed_images:{project_id}", 0)
             # if len(unprocessed_db_images) > 0:
             #     update_project_status(db=db, project_id=project_id, status="processing")
-            return {"status": "ok", "count": len(unprocessed_db_images), "images": images}
+            return {"status": "ok", "count": len(unprocessed_db_images), "images": unprocessed_db_images}
         except Exception as e:
             raise RuntimeError(f"Failed to list folder images: {str(e)}")
