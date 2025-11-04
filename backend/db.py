@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Generator
 from models import User, OAuthToken, Project, Image, Task, Face
 from datetime import datetime
 import uuid
+from s3 import upload_file_to_s3_folder
 
 engine = create_engine("postgresql://youruser:yourpass@localhost:5432/photoflow_db")
 
@@ -53,19 +54,31 @@ def get_oauth_token(db:Session, user_id:str, provider:str) -> Optional[OAuthToke
     return db.query(OAuthToken).filter(OAuthToken.user_id == user_id, OAuthToken.provider == provider).order_by(OAuthToken.created_at.desc()).first()
 
 
-def create_project(db:Session, user_id:str, name:Optional[str]=None, drive_folder_id:Optional[str]=None, config:Optional[Dict[str, Any]]=None) -> Project:
+def create_project(db:Session, user_id:str, name:Optional[str]=None, s3_folder_name:Optional[str]=None, config:Optional[Dict[str, Any]]=None) -> Project:
     new_project = Project(
         id=gen_uuid(),
         user_id=user_id,
         name=name,
-        drive_folder_id=drive_folder_id,
+        drive_folder_id=s3_folder_name,
         config=config,
         status="waiting"
     )
     db.add(new_project)
     db.commit()
     db.refresh(new_project)
+
+
+    upload_file_to_s3_folder(
+        bucket="researchconclave",
+        file_name="test.jpg",
+        folder_path=new_project.drive_folder_id,
+    )
+
     return new_project
+
+def check_project_exists(db:Session, user_id:str, name:str) -> bool:
+    project = db.query(Project).filter(Project.user_id == user_id, Project.name == name).one_or_none()
+    return project is not None
 
 def update_project_status(db:Session, project_id:str, status:str):
     project = db.query(Project).filter(Project.id == project_id).one_or_none()

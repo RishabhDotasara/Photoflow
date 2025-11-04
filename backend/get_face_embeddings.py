@@ -4,7 +4,7 @@ import cv2
 fa = FaceAnalysis(allowed_modules=['detection', 'recognition'])
 fa.prepare(ctx_id=0, det_size=(640, 640))
 
-img_bgr = cv2.imread("test.png")
+img_bgr = cv2.imread("test2.jpg")
 img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
 faces = fa.get(img)  # list of face objects
@@ -19,6 +19,13 @@ for i, f in enumerate(faces, start=1):
     cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 255, 0), 2)
     cv2.putText(img_bgr, str(i), (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-cv2.imshow("detected faces", img_bgr)
+# save annotated image
+out_path = "result.jpg"
+if cv2.imwrite(out_path, img_bgr):
+    print(f"Saved image to {out_path}")
+else:
+    print("Failed to save image")
+
+cv2.imshow("result", img_bgr)
 cv2.waitKey(0)
 cv2.destroyAllWindows()

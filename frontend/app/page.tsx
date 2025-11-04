@@ -54,7 +54,7 @@ export default function Home() {
                 className="text-muted-foreground/20"
                 stroke="currentColor"
                 strokeWidth="2"
-                className="text-muted-foreground/40"
+                
               />
 
               {/* Phone screen */}
