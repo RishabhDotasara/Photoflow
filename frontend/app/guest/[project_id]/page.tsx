@@ -186,6 +186,10 @@ export default function SelfieCapture() {
             <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-8">
                 <div className="max-w-7xl mx-auto space-y-8">
                     <div className="text-center space-y-3">
+                        {/* <span className="text-xl font-bold pb-4"> 
+                            Made with ❤️ by Webops & Blockchain Club
+                        </span> */}
+                        
                         <Badge variant="secondary" className="px-4 py-1.5 text-sm font-medium">
                             {generatedImages.length} {generatedImages.length === 1 ? "Image" : "Images"} Found
                         </Badge>
@@ -241,7 +245,10 @@ export default function SelfieCapture() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-muted/20">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-muted/20 flex-col gap-4">
+            <span className="text-xl font-bold pb-2">
+                Made with ❤️ by Webops & Blockchain Club
+            </span>
             <Card className="w-full max-w-2xl shadow-2xl border-2">
                 <CardHeader className="text-center space-y-2">
                     <CardTitle className="text-3xl font-bold tracking-tight">Take Your Selfie</CardTitle>
