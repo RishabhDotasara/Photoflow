@@ -1,9 +1,12 @@
 from celery import Celery
 from kombu import Queue
 import os 
+from dotenv import load_dotenv
 
-BROKER = "redis://127.0.0.1:6379/0"
-BACKEND = "redis://127.0.0.1:6379/1"
+load_dotenv()
+
+BROKER = os.getenv("REDIS_BROKER_URL")
+BACKEND = os.getenv("REDIS_BACKEND_URL")
 
 celery = Celery("photoflow", broker=BROKER, backend=BACKEND)
 import tasks 

@@ -73,7 +73,7 @@ def process_image(image_id:str, download_url: str,project_id: str):
         img_bytes = download_file_from_presigned_url(download_url)
         img_array = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        cv2.imwrite(filename=image_id+".png", img=img)
+        # cv2.imwrite(filename=image_id+".png", img=img)
         ensure_model()
         faces = fa.get(img)
         

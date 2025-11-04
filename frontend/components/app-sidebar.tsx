@@ -34,6 +34,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { useUser } from "@clerk/nextjs"
 
 const data = {
     user: {
@@ -52,11 +53,11 @@ const data = {
             url: "/my-projects",
             icon: IconList,
         },
-        {
-            title: "Analytics",
-            url: "#",
-            icon: IconChartBar,
-        },
+        // {
+        //     title: "Analytics",
+        //     url: "#",
+        //     icon: IconChartBar,
+        // },
     ],
     navClouds: [
         {
@@ -107,21 +108,21 @@ const data = {
         },
     ],
     navSecondary: [
-        {
-            title: "Settings",
-            url: "#",
-            icon: IconSettings,
-        },
-        {
-            title: "Get Help",
-            url: "#",
-            icon: IconHelp,
-        },
-        {
-            title: "Search",
-            url: "#",
-            icon: IconSearch,
-        },
+        // {
+        //     title: "Settings",
+        //     url: "#",
+        //     icon: IconSettings,
+        // },
+        // {
+        //     title: "Get Help",
+        //     url: "#",
+        //     icon: IconHelp,
+        // },
+        // {
+        //     title: "Search",
+        //     url: "#",
+        //     icon: IconSearch,
+        // },
     ],
     documents: [
         {
@@ -143,6 +144,12 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+    const {user} = useUser();
+    if (!user) return null;
+
+    data.user.name = user.firstName || "User"
+    data.user.email = user.primaryEmailAddress?.emailAddress || ""
+    data.user.avatar = user.imageUrl || ""
     return (
         <Sidebar collapsible="offcanvas" {...props}>
             <SidebarHeader>
@@ -154,7 +161,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         >
                             <a href="#">
                                 <IconInnerShadowTop className="!size-5" />
-                                <span className="text-base font-semibold">Acme Inc.</span>
+                                <span className="text-base font-semibold">CFI</span>
                             </a>
                         </SidebarMenuButton>
                     </SidebarMenuItem>

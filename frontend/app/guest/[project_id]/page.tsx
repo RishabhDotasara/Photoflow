@@ -141,6 +141,40 @@ export default function SelfieCapture() {
         setCapturedImage(null)
     }
 
+    const handleDownloadAll = async () => {
+        if (generatedImages.length === 0) return;
+
+        const fileNames = generatedImages.map((item:any)=>item.image.download_url)
+        setIsLoading(true)
+        const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/get-all-files-zip`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                file_names: fileNames
+            })
+        })
+        // Get the response as a Blob (binary data)
+        const blob = await resp.blob();
+        setIsLoading(false)
+
+        // Create a temporary URL for the Blob
+        const url = URL.createObjectURL(blob);
+
+        // Create an anchor element to trigger the download
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "images.zip"; // The filename for the downloaded ZIP file
+
+        // Programmatically trigger the click event to start the download
+        a.click();
+
+        // Clean up the object URL after the download
+        URL.revokeObjectURL(url);
+
+    }
+
     useEffect(() => {
         return () => {
             stopCamera()
@@ -161,28 +195,30 @@ export default function SelfieCapture() {
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-4  lg:grid-cols-6 xl:grid-cols-8 gap-4 md:gap-6">
                         {generatedImages.map((item: any, index: number) => (
                             <div
                                 key={item.image.id}
                                 className="group relative aspect-square rounded-xl overflow-hidden bg-muted shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]"
                             >
                                 <img
-                                    src={item.image.download_url}
+                                    src={item.image.thumbnail_url}
                                     alt={`image ${index + 1}`}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                     <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center justify-between">
-                                        <span className="text-white font-medium text-sm">Image {index + 1}</span>
+                                        {/* <span className="text-white font-medium text-sm">Image {index + 1}</span> */}
                                         <Button
                                             // onClick={() => downloadImage(downloadURL(item.image.drive_file_id) + "&download=true", index)}
                                             size="sm"
                                             className="bg-white text-black hover:bg-white/90"
                                         >
-                                            <Download className="w-4 h-4 mr-1.5" />
+                                            <a href={item.image.download_url} target="_blank" className="flex items-center justify-center gap-2" download>
+                                            <Download className="w-1 h-1 " />
                                             Download
+                                            </a>
                                         </Button>
                                     </div>
                                 </div>
@@ -190,10 +226,13 @@ export default function SelfieCapture() {
                         ))}
                     </div>
 
-                    <div className="flex justify-center pt-4">
+                    <div className="flex justify-center pt-4 items-center gap-2">
                         <Button onClick={resetFlow} variant="outline" size="lg" className="h-12 px-8">
                             <RotateCw className="w-5 h-5 mr-2" />
                             Upload Another Selfie
+                        </Button>
+                        <Button onClick={()=>{handleDownloadAll()}} disabled={isLoading}>
+                            Download All
                         </Button>
                     </div>
                 </div>

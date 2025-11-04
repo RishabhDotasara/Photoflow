@@ -4,7 +4,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, BadgeInfoIcon, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ProcessingPhases } from "@/components/processing-phases"
 
@@ -15,11 +15,21 @@ import { toast } from "sonner"
 import { FolderSelector } from "@/components/drive-folder-info"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { IconReload } from "@tabler/icons-react"
+import { Dropzone, DropzoneContent, DropzoneEmptyState } from "@/components/ui/shadcn-io/dropzone"
 export default function ProjectDescriptionPage() {
     const [processingProgress, setProcessingProgress] = useState(0)
     const params = useParams<{id:string}>();
     const {user} = useUser();
     const router = useRouter();
+    const [files, setFiles] = useState<File[]>([]);
+    const offset = useRef(0); 
+
+    const uploadImagesMutation = useMutation({
+        mutationFn: async (files: File[]) => {
+
+        }
+    })
 
     interface Folder {
         folder_id: string
@@ -40,63 +50,6 @@ export default function ProjectDescriptionPage() {
         fileCount: 342,
         shareLink: "https://photohub.app/share/summer-wedding-2025",
     }
-
-    // const listFoldersQuery = useQuery({
-    //     queryKey: ['folders', project.id],
-    //     queryFn: async () => {
-    //         const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/list-folders?user_id=${user?.publicMetadata?.userId}`);
-    //         if (!resp.ok) {
-    //         if (resp.status === 500){
-    //             // so this probably happens because the refresh token is invalid, so take the user to onboarding flow again.
-    //             router.push("/onboard-user?redirect_url=/my-projects/"+project.id);
-    //             toast.error("Please re-authorize Google Drive access to continue.");
-    //             return;
-    //         }
-    //             // window.location.href = "/onboard-user?redirect_url=/my-projects/"+project.id;
-    //         }
-    //         const resJson = await resp.json();
-    //         console.log(resJson);
-    //         return resJson.folders;
-    //     },
-        
-    //     staleTime: 5 * 60 * 1000, // 5 minutes
-    //     refetchOnWindowFocus: true,
-    //     enabled: user?.publicMetadata?.userId !== undefined,
-    // }) 
-
-    // const isFolderSelectedQuery = useQuery({
-    //     queryKey: ['is-folder-set', project.id],
-    //     queryFn: async () => {
-    //         const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/folder-drive-id-set?project_id=${project.id}`);
-    //         if (!resp.ok) {
-    //             throw new Error("Failed to fetch folder status");
-    //         }
-    //         const resJson = await resp.json();
-    //         // console.log(resJson);
-    //         return resJson;
-    //     },
-    //     staleTime: 5 * 60 * 1000, // 5 minutes
-    //     refetchOnWindowFocus: false,
-    //     // retry: 1,
-
-    // })
-
-    // const saveFolderIdMutation = useMutation({
-    //     mutationFn: async (folder: any) => {
-    //         const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/set-folder-id?project_id=${project.id}&folder_id=${folder.id}&user_id=${user?.publicMetadata?.userId}`)
-    //         if (!resp.ok) {
-    //             throw new Error("Failed to save folder ID")
-    //         }
-    //         return resp.json()
-    //     },
-    //     onSuccess: () => {
-    //         toast.success("Folder linked successfully")
-    //         isFolderSelectedQuery.refetch();
-    //     },
-    //     onError: () => {
-    //         toast.error("Failed to link folder")
-    //     },
-    // })
 
     
     const getProjectQuery = useQuery({
@@ -219,7 +172,10 @@ export default function ProjectDescriptionPage() {
                         </Badge> */}
                         {getProjectQuery.data?.status === "processing" && <Badge className="bg-amber-400">Processing</Badge>}
                         
+                        <div className="flex justify-center items-center gap-4">
+                        <Button variant={"outline"} onClick={()=>{getProjectQuery.refetch()}} disabled={getProjectQuery.isRefetching}><IconReload/></Button>
                         <Button disabled={getProjectQuery.data?.status === "processing"} onClick={() => {startAnalysisMutation.mutate()}}>Start Analysis</Button>
+                        </div>
                         {/* {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>} */}
                     </div>
 
@@ -287,6 +243,17 @@ export default function ProjectDescriptionPage() {
                         />:(
                             <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
                         )} */}
+                       <Dropzone
+                        accept={{'image/*':[]}}
+                        onDrop={()=>{uploadImagesMutation.mutate(files)}}
+                        onError={(e)=>{toast.error("Error Uploading Files, Please try again!", {description: e.message})}}
+                        multiple={true}
+                        src={files}
+                        maxFiles={20000}
+                       >
+                        <DropzoneContent />
+                        <DropzoneEmptyState/>
+                       </Dropzone>
                     </div>
 
                     {/* Right Column - Shareable Link */}

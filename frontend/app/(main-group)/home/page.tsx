@@ -105,22 +105,13 @@ export default function Home() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-4xl font-bold text-foreground">{getHomeInfoQuery.data?.project_count}</div>
+                            <div className="text-4xl font-bold text-foreground">{getHomeInfoQuery.data?.project_count || 0}</div>
                             <p className="text-sm text-muted-foreground mt-2">Projects currently processing</p>
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* Main Content Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Active Processing */}
-                    <div className="lg:col-span-2">
-                        <ProcessingStatus items={processingItems} />
-                    </div>
-
-                    {/* Photos Credit */}
-                    <PhotosCredit processed={134} total={1000} />
-                </div>
+                
             </main>
         </div>
     )

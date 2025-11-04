@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
@@ -13,15 +13,15 @@ from sqlalchemy.exc import IntegrityError
 # file imports 
 from redisClient import RedisClient
 from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id,get_unprocessed_images, add_image, get_project, clear_project_images, user_exists, check_project_exists
-from helpers import credentials_for_user, get_drive_images, find_similar_images
+from helpers import credentials_for_user, get_drive_images, find_similar_images, download_file_from_presigned_url
 from clerk import set_public_user_id
 
 #google drive api imports 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from s3 import list_files_in_s3_folder, generate_presigned_url
-
+from s3 import list_files_in_s3_folder, generate_presigned_url, get_upload_presigned_url
+from typing import *
 import os 
 
 app = FastAPI()
@@ -542,6 +542,7 @@ async def upload_selfie(
             # print(img)
             presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=img['image']["drive_file_id"], expiration=3600)
             img["image"]["download_url"] = presigned_url
+            img['image']['thumbnail_url'] = generate_presigned_url(bucket=_bucket_name, object_name="thumbnails/"+img['image']["drive_file_id"]+"_thumbnail.jpg", expiration=3600)
 
         return {
             "status": "ok",
@@ -613,3 +614,40 @@ def resync_drive_folder(user_id: str, project_id: str):
         queue="folder_tasks",
     )
     return {"status": "Folder resyncing started.", "folder_task_id": async_result.id}
+
+@app.get("/get-signed-url")
+def get_presigned_url_to_upload(object_name:str):
+    try:
+        presigned_url = get_upload_presigned_url(bucket=_bucket_name, object_name=object_name)
+        return {"status": "ok", "presigned_url": presigned_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate presigned URL: {str(e)}")
+    
+
+class FileNames(BaseModel): 
+    file_names: List[str]
+import zipfile
+@app.post("/get-all-files-zip")
+async def download_all(file_names: FileNames):
+    # Create a buffer to store the ZIP file in memory
+    zip_buffer = BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for idx, file_key in enumerate(file_names.file_names):
+            try:
+                # Assuming file_key is a presigned URL
+                file_data = download_file_from_presigned_url(file_key)
+                file_name = os.path.basename(file_key.split("?")[0])
+                zip_file.writestr(file_name, file_data)  # Store using file name
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error downloading file {file_key}: {str(e)}")
+
+    # Seek to the beginning of the BytesIO buffer for the response
+    zip_buffer.seek(0)
+
+    # Return the ZIP file as a StreamingResponse
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=files.zip"}
+    )

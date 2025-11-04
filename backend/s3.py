@@ -284,3 +284,24 @@ if __name__ == "__main__":
     print(f"Upload success: {upload_success}")
 
     # get presigned url
+
+def get_upload_presigned_url(bucket, object_name, expiration=3600):
+    """
+    Generate a presigned URL to upload an S3 object
+
+    :param bucket: Bucket name
+    :param object_name: S3 object name
+    :param expiration: Time in seconds for the presigned URL to remain valid
+    :return: Presigned URL as string. If error, returns None.
+    """
+    try:
+        response = s3_client.generate_presigned_url('put_object',
+                                                    Params={'Bucket': bucket,
+                                                            'Key': object_name},
+                                                    ExpiresIn=expiration)
+    except Exception as e:
+        print(f"Failed to generate upload presigned URL for {bucket}/{object_name}: {e}")
+        return None
+
+    return response
+
