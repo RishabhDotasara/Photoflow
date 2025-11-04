@@ -27,18 +27,16 @@ app = FastAPI()
 
 # CORS INIT 
 origins = [
-    "http://localhost:3000",  # e.g. your Next.js frontend
-    "https://your-frontend-domain.com",
-    "*"
+    "https://photoflow.cfiwebops.com",  # your frontend
+    "https://www.photoflow.cfiwebops.com",  # optional
 ]
 
-# 👇 Add the middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],            # Frontend origins allowed
-    allow_credentials=True,           # Allow cookies / credentials
-    allow_methods=["*"],              # Allow all HTTP methods
-    allow_headers=["*"],              # Allow all headers
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
