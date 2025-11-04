@@ -220,7 +220,7 @@ export default function ProjectDescriptionPage() {
                         {getProjectQuery.data?.status === "processing" && <Badge className="bg-amber-400">Processing</Badge>}
                         
                         <Button disabled={getProjectQuery.data?.status === "processing"} onClick={() => {startAnalysisMutation.mutate()}}>Start Analysis</Button>
-                        {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>}
+                        {/* {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>} */}
                     </div>
 
                     {/* Quick Stats */}

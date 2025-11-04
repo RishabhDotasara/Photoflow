@@ -140,7 +140,8 @@ def find_similar_images(
     results = db.execute(stmt).all()
 
     # results = [(Image, best_distance), ...]
-    images = [{"image": image, "best_distance": dist} for image, dist in results]
+    # images = [{"image": image, "best_distance": dist} for image, dist in results]
+    images = [{"image":{"drive_file_id":image.drive_file_id}} for image, dist in results]
     return images
 
 def get_drive_images(folder_id: str, creds: Credentials) -> list[dict]:

@@ -169,7 +169,7 @@ export default function SelfieCapture() {
                             >
                                 <img
                                     src={item.image.download_url}
-                                    alt={`Generated image ${index + 1}`}
+                                    alt={`image ${index + 1}`}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                 />
@@ -177,7 +177,7 @@ export default function SelfieCapture() {
                                     <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center justify-between">
                                         <span className="text-white font-medium text-sm">Image {index + 1}</span>
                                         <Button
-                                            onClick={() => downloadImage(downloadURL(item.image.drive_file_id) + "&download=true", index)}
+                                            // onClick={() => downloadImage(downloadURL(item.image.drive_file_id) + "&download=true", index)}
                                             size="sm"
                                             className="bg-white text-black hover:bg-white/90"
                                         >

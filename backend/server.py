@@ -20,6 +20,7 @@ from clerk import set_public_user_id
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from s3 import list_files_in_s3_folder, generate_presigned_url
 
 import os 
 
@@ -57,6 +58,7 @@ CLIENT_SECRET = "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"
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
 REDIRECT_URI = BACKEND_BASE_URL + "/auth/drive/callback"
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+_bucket_name = "researchconclave"
 
 # in memory stores for tokens, use redis here 
 _oauth_states_namespace = "oauth_states"
@@ -319,19 +321,19 @@ def get_project_endpoint(project_id: str):
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # images = get_drive_images(folder_id=project.drive_folder_id, creds=credentials_for_user(project.user_id, redis_client)) if project.drive_folder_id else []
-        # out_of_sync = len(images) != len(project.images)
-        # image_ids = [img.id for img in project.images]
+        images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=project.drive_folder_id)
+        out_of_sync = len(images) != len(project.images)
+        # image_ids = [img.drive_file_id for img in project.images]
 
         # if out of sync, just insert those imagse back in the db with processed set to false 
         # if out_of_sync:
         #     for img in images:
-        #         if img['id'] not in image_ids:
+        #         if img not in image_ids:
         #             try:
         #                 add_image(
         #                     db=db,
         #                     project_id=project.id,
-        #                     drive_file_id=img["id"],
+        #                     drive_file_id=img,
         #                     name=img.get("name"),
         #                     mime_type=img.get("mimeType"),
         #                     download_url=img.get("download_url"),
@@ -352,7 +354,7 @@ def get_project_endpoint(project_id: str):
             "image_count": len(project.images),
             "created_at": project.created_at,
             "updated_at": project.updated_at,
-            "out_of_sync": False 
+            "out_of_sync": out_of_sync 
         }
     return {"status": "ok", "project": project_data}
 
@@ -531,9 +533,15 @@ async def upload_selfie(
                 "matching_images_count": 0,
                 "matching_images": []
             }
-        print("Embedding: ", embeddings)
+        # print("Embedding: ", embeddings)
         with get_session() as db:
             matching_images = find_similar_images(db=db, query_embedding=embeddings[0], project_id=project_id)
+        # loop through images to get new presigned urls valid for one hour 
+        # print(matching_images)
+        for img in matching_images:
+            # print(img)
+            presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=img['image']["drive_file_id"], expiration=3600)
+            img["image"]["download_url"] = presigned_url
 
         return {
             "status": "ok",

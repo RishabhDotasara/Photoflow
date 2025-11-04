@@ -97,7 +97,7 @@ def process_image(image_id:str, download_url: str,project_id: str):
             print(f"Processed images for project {project_id}: {processed}/{total}")
             if total > 0 and total == processed:
                 print("Project Completed. Updating status.")
-                # update_project_status(db, project_id, "completed")
+                update_project_status(db, project_id, "completed")
 
             mark_image_processed(db, image_id)
             
@@ -162,17 +162,17 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
 
                     download_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{img}")
                     print(download_url)
-                    # img_content = download_file_from_presigned_url(download_url)
-                    # # create the thumbnail and push to the s3 bucket 
-                    # thumbnail = create_thumbnail(img_content)
-                    # # save this thumbnail link as well in the db
-                    # if not check_file_exists_in_s3_folder(bucket=_bucket_name, folder_path=proj.drive_folder_id, object_name=f"thumbnails/{img.split("/")[-1]}_thumbnail.jpg"):
-                    #     upload_file_to_s3_folder_memory(
-                    #         file_content=thumbnail, 
-                    #         object_name=f"thumbnails/{img.split("/")[-1]}_thumbnail.jpg",
-                    #         bucket=_bucket_name,
-                    #         folder_path=proj.drive_folder_id,
-                    #     )
+                    img_content = download_file_from_presigned_url(download_url)
+                    # create the thumbnail and push to the s3 bucket 
+                    thumbnail = create_thumbnail(img_content)
+                    # save this thumbnail link as well in the db
+                    if not check_file_exists_in_s3_folder(bucket=_bucket_name, folder_path="thumbnails/"+proj.drive_folder_id, object_name=f"t{img.split("/")[-1]}_thumbnail.jpg"):
+                        upload_file_to_s3_folder_memory(
+                            file_content=thumbnail, 
+                            object_name=f"{img.split("/")[-1]}_thumbnail.jpg",
+                            bucket=_bucket_name,
+                            folder_path="thumbnails/"+proj.drive_folder_id,
+                        )
 
                     # get presigned url for the image to be used by the worker to process the image  
                     thumbnail_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{proj.drive_folder_id}/thumbnails/{img}_thumbnail.jpg")
@@ -212,8 +212,8 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                 
             redis_client.set_key(f"total_images:{project_id}",len(unprocessed_db_images))
             redis_client.set_key(f"processed_images:{project_id}", 0)
-            # if len(unprocessed_db_images) > 0:
-            #     update_project_status(db=db, project_id=project_id, status="processing")
+            if len(unprocessed_db_images) > 0:
+                update_project_status(db=db, project_id=project_id, status="processing")
             return {"status": "ok", "count": len(unprocessed_db_images), "images": unprocessed_db_images}
         except Exception as e:
             raise RuntimeError(f"Failed to list folder images: {str(e)}")
