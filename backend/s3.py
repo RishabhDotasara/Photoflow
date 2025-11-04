@@ -283,4 +283,13 @@ if __name__ == "__main__":
     upload_success = upload_file_to_s3_folder(local_file, bucket_name, folder)
     print(f"Upload success: {upload_success}")
 
+
+    filePath = "2025/orignal/_MG_4954.JPG"
+
+    # download file from s3 url
+    base64_content = get_file_from_s3_url(f"s3://{bucket_name}/{filePath}")
+    if base64_content:
+        print(f"Downloaded file content (base64): {base64_content[:100]}...")  # Print first 100 chars
+    else:
+        print("Failed to download file content.")
     # get presigned url
