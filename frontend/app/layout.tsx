@@ -16,6 +16,7 @@ import {
 } from '@clerk/nextjs'
 import QueryProvider from "@/providers/queryProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/provider/theme-provider";
 
 
 const geistSans = Geist({
@@ -47,7 +48,14 @@ export default function RootLayout({
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
           <QueryProvider>
-          {children}
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+            </ThemeProvider>
           <Toaster/>
           </QueryProvider>
         </body>

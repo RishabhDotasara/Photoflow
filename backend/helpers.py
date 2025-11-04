@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 from models import Face, Image
 from sqlalchemy import select, func , cast 
 from pgvector.sqlalchemy import Vector
+from PIL import Image as PILImage
+import io
+import requests  
 
 
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID","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")
@@ -131,13 +134,14 @@ def find_similar_images(
         stmt.where(func.cosine_distance(Face.embedding, vector_cast) <= threshold)
         .group_by(Image.id)
         .order_by("best_distance")
-        .limit(limit)
+        
     )
 
     results = db.execute(stmt).all()
 
     # results = [(Image, best_distance), ...]
-    images = [{"image": image, "best_distance": dist} for image, dist in results]
+    # images = [{"image": image, "best_distance": dist} for image, dist in results]
+    images = [{"image":{"drive_file_id":image.drive_file_id}} for image, dist in results]
     return images
 
 def get_drive_images(folder_id: str, creds: Credentials) -> list[dict]:
@@ -170,3 +174,25 @@ def get_drive_images(folder_id: str, creds: Credentials) -> list[dict]:
             break
 
     return images
+
+
+def create_thumbnail(img_bytes, size=(200,200), quality=70) -> bytes:
+    image = PILImage.open(io.BytesIO(img_bytes))
+    image.thumbnail(size)
+    output = io.BytesIO()
+    image.save(output, format="JPEG", quality=quality)
+    return output.getvalue()
+
+def download_file_from_presigned_url(url):
+    """
+    Downloads a file from a pre-signed URL and returns the file content as bytes.
+    
+    :param url: The pre-signed URL to download the file from
+    :return: The file content as bytes
+    """
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        return response.content  # Return the content as bytes
+    else:
+        raise Exception(f"Failed to download file. Status code: {response.status_code}")
