@@ -235,9 +235,9 @@ export default function SelfieCapture() {
                             <RotateCw className="w-5 h-5 mr-2" />
                             Upload Another Selfie
                         </Button>
-                        <Button onClick={()=>{handleDownloadAll()}} disabled={isLoading}>
+                        {/* <Button onClick={()=>{handleDownloadAll()}} disabled={isLoading}>
                             Download All
-                        </Button>
+                        </Button> */}
                     </div>
                 </div>
             </div>
