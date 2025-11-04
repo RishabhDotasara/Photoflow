@@ -70,7 +70,8 @@ def process_image(image_id:str, download_url: str,project_id: str):
     and POSTs callback or writes to DB as required.
     """
     try:
-        img_bytes = download_file_from_presigned_url(download_url)
+        presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=download_url, expiration=3600)
+        img_bytes = download_file_from_presigned_url(presigned_url)
         img_array = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
         # cv2.imwrite(filename=image_id+".png", img=img)
@@ -113,7 +114,8 @@ def process_image(image_id:str, download_url: str,project_id: str):
 
     except Exception as e:
         # Celery will record failure; you can also post callback to your server here
-        raise
+        print("Error: ", e)
+
 
 
 @celery.task(name="tasks.list_folder_and_enqueue")
@@ -138,6 +140,8 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
         # get all image links from the folder using google drive api and push them on the queue to process 
 
         try:
+            update_project_status(db=db, project_id=project_id, status="processing")
+            print("Marked project as processing")
             images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=proj.drive_folder_id)
             print(images)
             # optionally store image list in redis or enqueue tasks here
@@ -149,7 +153,7 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
             # get the list of images already in db to avoid duplicates
             # use object key as drive_file_id
             db_images = db.query(Image.drive_file_id).filter(Image.project_id == project_id).all()
-            existing_drive_file_ids = set(img.drive_file_id for img in db_images)
+            existing_drive_file_ids = set([img.drive_file_id for img in db_images])
 
             # print(existing_drive_file_ids)
             
@@ -175,7 +179,7 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                         )
 
                     # get presigned url for the image to be used by the worker to process the image  
-                    thumbnail_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{proj.drive_folder_id}/thumbnails/{img}_thumbnail.jpg")
+                    thumbnail_url = generate_presigned_url(bucket=_bucket_name, object_name=f"thumbnails/{proj.drive_folder_id}/{img}_thumbnail.jpg")
                     
                     add_image(
                         db=db,
@@ -201,8 +205,9 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                             "tasks.process_image",
                             args=(
                                 img.id,
-                                img.download_url,
+                                img.drive_file_id,
                                 img.project_id,
+                         
                                 )
                             )
                     print(f"Enqueued image {img.drive_file_id} task id: {async_result.id}")
@@ -212,8 +217,8 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                 
             redis_client.set_key(f"total_images:{project_id}",len(unprocessed_db_images))
             redis_client.set_key(f"processed_images:{project_id}", 0)
-            if len(unprocessed_db_images) > 0:
-                update_project_status(db=db, project_id=project_id, status="processing")
+            
             return {"status": "ok", "count": len(unprocessed_db_images), "images": unprocessed_db_images}
         except Exception as e:
-            raise RuntimeError(f"Failed to list folder images: {str(e)}")
+            print("Error: ", e)
+            

@@ -65,6 +65,7 @@ export default function ProjectDescriptionPage() {
         },
         staleTime: 1 * 60 * 1000, // 5 minutes
         refetchOnWindowFocus: false,
+        refetchInterval:5 * 60 * 1000,
         enabled: user?.publicMetadata?.userId !== undefined ,
     })
 
@@ -78,6 +79,9 @@ export default function ProjectDescriptionPage() {
             const resJson = await resp.json();
             console.log("Progress:", resJson);
             const fraction = resJson.processed_images / getProjectQuery.data?.image_count;
+            if (fraction == 1){
+                getProjectQuery.refetch();
+            }
             return fraction * 100;
         },
         staleTime: 2000, // 30 seconds
@@ -96,6 +100,7 @@ export default function ProjectDescriptionPage() {
                 throw new Error("Failed to start analysis");
             }
             // refetch the project status and everything
+            getProjectQuery.refetch();
 
             return resp.json();
         },
@@ -180,7 +185,7 @@ export default function ProjectDescriptionPage() {
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-4">
                         <Card>
                             <CardHeader className="text-muted-foreground">
                                 Total Photos

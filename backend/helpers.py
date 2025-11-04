@@ -134,7 +134,7 @@ def find_similar_images(
         stmt.where(func.cosine_distance(Face.embedding, vector_cast) <= threshold)
         .group_by(Image.id)
         .order_by("best_distance")
-        .limit(limit)
+        
     )
 
     results = db.execute(stmt).all()

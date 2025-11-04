@@ -35,6 +35,7 @@ import {
     SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { useUser } from "@clerk/nextjs"
+import { ModeToggle } from "./theme-toggle"
 
 const data = {
     user: {
@@ -163,8 +164,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                                 <IconInnerShadowTop className="!size-5" />
                                 <span className="text-base font-semibold">CFI</span>
                             </a>
+                        
                         </SidebarMenuButton>
                     </SidebarMenuItem>
+                  
                 </SidebarMenu>
             </SidebarHeader>
             <SidebarContent>
