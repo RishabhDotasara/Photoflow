@@ -17,6 +17,8 @@ from pgvector.sqlalchemy import Vector
 from PIL import Image as PILImage
 import io
 import requests  
+import rawpy 
+from io import BytesIO
 
 
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID","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")
@@ -196,3 +198,44 @@ def download_file_from_presigned_url(url):
         return response.content  # Return the content as bytes
     else:
         raise Exception(f"Failed to download file. Status code: {response.status_code}")
+
+
+def is_raw_image(image_bytes):
+    """
+    Check if the given image bytes correspond to a raw image format.
+    This check is based on the file signature (magic bytes).
+    """
+    print(f"First 4 bytes of image: {image_bytes[:4]}")
+    
+    # Check for Sony ARW (or other raw formats, extend as needed)
+    if image_bytes[:4] == b'ARW\x00':
+        return True
+    # Add other raw format checks here if needed (e.g., CR2, NEF, etc.)
+    
+    return False
+
+def process_raw_image_from_bytes(raw_bytes):
+    """
+    Process raw image bytes using rawpy and return the image in bytes.
+    """
+    # Print first few bytes to debug
+    print(f"Processing raw image with {len(raw_bytes)} bytes.")
+    
+    try:
+        with rawpy.imread(BytesIO(raw_bytes)) as raw:
+            rgb_image = raw.postprocess()
+
+        # Convert the image to bytes (e.g., JPEG or PNG)
+        _, img_bytes = cv2.imencode('.jpg', rgb_image)  # You can choose PNG or JPG here
+        return img_bytes.tobytes()
+    except Exception as e:
+        print(f"Error processing ARW image: {e}")
+        return None
+
+def process_image_from_bytes(image_bytes):
+    """
+    Process image bytes and return the final image as bytes (either raw or standard format).
+    """
+    
+    return process_raw_image_from_bytes(image_bytes)
+    

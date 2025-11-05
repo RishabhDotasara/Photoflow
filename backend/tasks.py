@@ -14,7 +14,7 @@ from db import add_image, get_project, get_db, insert_faces, update_project_stat
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
 from googleapiclient.discovery import build
-from helpers import credentials_for_user, get_drive_images, create_thumbnail, download_file_from_presigned_url
+from helpers import credentials_for_user, get_drive_images, create_thumbnail, download_file_from_presigned_url, process_image_from_bytes
 from sqlalchemy.exc import IntegrityError
 import os 
 from s3 import list_files_in_s3_folder, upload_file_to_s3_folder, generate_presigned_url, upload_file_to_s3_folder_memory, check_file_exists_in_s3_folder
@@ -72,6 +72,10 @@ def process_image(image_id:str, download_url: str,project_id: str):
     try:
         presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=download_url, expiration=3600)
         img_bytes = download_file_from_presigned_url(presigned_url)
+
+        # process the arw images here
+        img_bytes = process_image_from_bytes(img_bytes)
+
         img_array = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
         # cv2.imwrite(filename=image_id+".png", img=img)
@@ -115,6 +119,39 @@ def process_image(image_id:str, download_url: str,project_id: str):
     except Exception as e:
         # Celery will record failure; you can also post callback to your server here
         print("Error: ", e)
+
+@celery.task(name="tasks.generate_thumbnail")
+def generate_thumbnail(image_id: str, download_url: str, project_drive_folder: str):
+    
+    # now push to the process queue 
+    try:
+        download_presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{download_url}")
+        img_content = download_file_from_presigned_url(download_presigned_url)
+        img_content = process_image_from_bytes(img_content)
+        # create the thumbnail and push to the s3 bucket 
+        thumbnail = create_thumbnail(img_content)
+        # save this thumbnail link as well in the db
+        if not check_file_exists_in_s3_folder(bucket=_bucket_name, folder_path="thumbnails/"+project_drive_folder, object_name=f"t{download_url.split("/")[-1]}_thumbnail.jpg"):
+            upload_file_to_s3_folder_memory(
+                file_content=thumbnail, 
+                object_name=f"{download_url.split("/")[-1]}_thumbnail.jpg",
+                bucket=_bucket_name,
+                folder_path="thumbnails/"+project_drive_folder)
+            
+        print("Uploaded thumbnail for image ", image_id)
+            
+        async_result = celery.send_task(
+                "tasks.process_image",
+                args=(
+                    image_id,
+                    download_url,
+                    project_drive_folder,
+                    )
+                )
+        print(f"Enqueued image {download_url} task id: {async_result.id}")
+    except Exception as e:
+        print(f"Failed to enqueue image {download_url}: {e}")
+        
 
 
 
@@ -162,34 +199,19 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                     # deduplication check 
                     if img in existing_drive_file_ids:
                         continue
-                    
+                                       
 
-                    download_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{img}")
-                    print(download_url)
-                    img_content = download_file_from_presigned_url(download_url)
-                    # create the thumbnail and push to the s3 bucket 
-                    thumbnail = create_thumbnail(img_content)
-                    # save this thumbnail link as well in the db
-                    if not check_file_exists_in_s3_folder(bucket=_bucket_name, folder_path="thumbnails/"+proj.drive_folder_id, object_name=f"t{img.split("/")[-1]}_thumbnail.jpg"):
-                        upload_file_to_s3_folder_memory(
-                            file_content=thumbnail, 
-                            object_name=f"{img.split("/")[-1]}_thumbnail.jpg",
-                            bucket=_bucket_name,
-                            folder_path="thumbnails/"+proj.drive_folder_id,
-                        )
-
-                    # get presigned url for the image to be used by the worker to process the image  
-                    thumbnail_url = generate_presigned_url(bucket=_bucket_name, object_name=f"thumbnails/{proj.drive_folder_id}/{img}_thumbnail.jpg")
-                    
                     add_image(
                         db=db,
                         project_id=project_id,
                         drive_file_id=img,
                         name=img,
                         mime_type="",
-                        download_url=download_url,
-                        thumbnail_link=thumbnail_url,
+                        download_url="",
+                        thumbnail_link="",
                     )
+
+                    print("Added image to DB: ", img)
 
                 except IntegrityError as e:
                     db.rollback()
@@ -202,15 +224,15 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
             for img in unprocessed_db_images:
                 try:
                     async_result = celery.send_task(
-                            "tasks.process_image",
+                            "tasks.generate_thumbnail",
                             args=(
                                 img.id,
                                 img.drive_file_id,
-                                img.project_id,
+                                proj.drive_folder_id,
                          
                                 )
                             )
-                    print(f"Enqueued image {img.drive_file_id} task id: {async_result.id}")
+                    print(f"Enqueued image {img.drive_file_id} for thumbnail generation task id: {async_result.id}")
                 except Exception as e:
                     print(f"Failed to enqueue image {img.drive_file_id}: {e}")
                     continue

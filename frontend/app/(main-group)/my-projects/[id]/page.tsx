@@ -27,7 +27,10 @@ export default function ProjectDescriptionPage() {
 
     const uploadImagesMutation = useMutation({
         mutationFn: async (files: File[]) => {
-
+            const formData = new FormData();
+            files.forEach((file) => {
+                formData.append('images', file);
+            });
         }
     })
 
@@ -263,7 +266,7 @@ export default function ProjectDescriptionPage() {
 
                     {/* Right Column - Shareable Link */}
                     <div>
-                        <ShareableLinkCard shareLink={`http://localhost:3000/guest/${project.id}`} projectName={project.name} />
+                        <ShareableLinkCard shareLink={`https://photoflow.cfiwebops.com/guest/${project.id}`} projectName={project.name} />
                     </div>
                 </div>
             </main>
