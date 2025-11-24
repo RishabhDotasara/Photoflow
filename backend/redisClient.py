@@ -63,3 +63,11 @@ class RedisClient:
             self.client.delete(key)
         except redis.exceptions.RedisError as e:
             raise RuntimeError(f"Redis error when deleting key {key}: {e}") from e
+
+redis_client = RedisClient()
+try:
+    redis_client.connect()
+    print("Connected to Redis successfully.")
+except RuntimeError as e:
+    print(f"Error connecting to Redis: {e}")
+

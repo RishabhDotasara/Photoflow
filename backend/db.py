@@ -6,8 +6,8 @@ from models import User, OAuthToken, Project, Image, Task, Face
 from datetime import datetime
 import uuid
 from s3 import upload_file_to_s3_folder
+from sqlalchemy.orm import noload
 
-engine = create_engine("postgresql://youruser:yourpass@localhost:5432/photoflow_db")
 
 def get_db() -> Generator:
     db = SessionLocal() 
@@ -116,7 +116,10 @@ def get_unprocessed_images(db: Session, project_id: str) -> List[Image]:
     return db.query(Image).filter(Image.project_id == project_id, Image.processed == False).all()
 
 def get_project(db: Session, project_id: str) -> Optional[Project]:
-    return db.query(Project).filter(Project.id == project_id).one_or_none()
+    return db.query(Project).options(noload(Project.images)).filter(Project.id == project_id).one_or_none()
+
+def get_number_of_images(db: Session, project_id: str) -> int:
+    return db.query(Image).filter(Image.project_id == project_id).count()
 
 def list_projects_by_user(db: Session, user_id: str) -> List[Project]:
     return db.query(Project).filter(Project.user_id == user_id).all()

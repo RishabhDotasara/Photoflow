@@ -9,7 +9,7 @@ import cv2
 import base64
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
-from redisClient import RedisClient
+from redisClient import redis_client
 from db import add_image, get_project, get_db, insert_faces, update_project_status_if_done, mark_image_processed, update_project_status, get_unprocessed_images
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
@@ -41,8 +41,6 @@ from models import SessionLocal, Image, OAuthToken
 
 # lazy-loaded model for image tasks
 fa = None
-redis_client = RedisClient()
-redis_client.connect()
 
 def ensure_model():
     global fa
@@ -74,7 +72,10 @@ def process_image(image_id:str, download_url: str,project_id: str):
         img_bytes = download_file_from_presigned_url(presigned_url)
 
         # process the arw images here
-        img_bytes = process_image_from_bytes(img_bytes)
+        ext = download_url.split("/")[-1].split(".")[-1].lower()
+        if ext in ['arw', 'nef', 'cr2', 'raw', 'dng', 'rw2']:
+            # process the raw image to get jpg bytes
+            img_content = process_image_from_bytes(img_content)
 
         img_array = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
@@ -106,28 +107,24 @@ def process_image(image_id:str, download_url: str,project_id: str):
 
             mark_image_processed(db, image_id)
             
-        
-        # for i, f in enumerate(faces, start=1):
-        #     x1, y1, x2, y2 = map(int, f.bbox)
-        #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        #     cv2.putText(img, str(i), (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-        # # save annotated image to disk (for now)
-        # out_path = f"processed_{drive_file_id}.jpg"
-        # cv2.imwrite(out_path, img)
-        # print(f"Processed image {image_id}, saved to {out_path}, detected {len(faces)} faces.")
-
     except Exception as e:
         # Celery will record failure; you can also post callback to your server here
         print("Error: ", e)
 
 @celery.task(name="tasks.generate_thumbnail")
-def generate_thumbnail(image_id: str, download_url: str, project_drive_folder: str):
+def generate_thumbnail(image_id: str, download_url: str, project_drive_folder: str, project_id: str):
     
     # now push to the process queue 
     try:
         download_presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{download_url}")
         img_content = download_file_from_presigned_url(download_presigned_url)
-        img_content = process_image_from_bytes(img_content)
+
+        # check if raw image or not 
+        ext = download_url.split("/")[-1].split(".")[-1].lower()
+        if ext in ['arw', 'nef', 'cr2', 'raw', 'dng', 'rw2']:
+            # process the raw image to get jpg bytes
+            img_content = process_image_from_bytes(img_content)
+
         # create the thumbnail and push to the s3 bucket 
         thumbnail = create_thumbnail(img_content)
         # save this thumbnail link as well in the db
@@ -139,13 +136,17 @@ def generate_thumbnail(image_id: str, download_url: str, project_drive_folder: s
                 folder_path="thumbnails/"+project_drive_folder)
             
         print("Uploaded thumbnail for image ", image_id)
+
+        redis_client.increment(f'thumbnails_generated:{project_id}')
+
+        print("Thumbnail Progress: ", redis_client.get_key(f'thumbnails_generated:{project_id}'),"/",redis_client.get_key(f'total_images:{project_id}'))
             
         async_result = celery.send_task(
                 "tasks.process_image",
                 args=(
                     image_id,
                     download_url,
-                    project_drive_folder,
+                    project_id,
                     )
                 )
         print(f"Enqueued image {download_url} task id: {async_result.id}")
@@ -180,7 +181,12 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
             update_project_status(db=db, project_id=project_id, status="processing")
             print("Marked project as processing")
             images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=proj.drive_folder_id)
-            print(images)
+            
+            # update the redis here with new total image count 
+            
+
+
+
             # optionally store image list in redis or enqueue tasks here
             # batch create images in db before pushing to the queue 
 
@@ -221,6 +227,10 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
             # now get all unprocessed images from the db and put them on the processing queue 
             unprocessed_db_images = get_unprocessed_images(db=db, project_id=project_id)
             
+            redis_client.set_key(f"total_images:{project_id}",len(unprocessed_db_images))
+            redis_client.set_key(f"processed_images:{project_id}", 0)
+            redis_client.set_key(f'thumbnails_generated:{project_id}', 0)
+            
             for img in unprocessed_db_images:
                 try:
                     async_result = celery.send_task(
@@ -229,7 +239,7 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                                 img.id,
                                 img.drive_file_id,
                                 proj.drive_folder_id,
-                         
+                                project_id
                                 )
                             )
                     print(f"Enqueued image {img.drive_file_id} for thumbnail generation task id: {async_result.id}")
@@ -237,8 +247,6 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                     print(f"Failed to enqueue image {img.drive_file_id}: {e}")
                     continue
                 
-            redis_client.set_key(f"total_images:{project_id}",len(unprocessed_db_images))
-            redis_client.set_key(f"processed_images:{project_id}", 0)
             
             return {"status": "ok", "count": len(unprocessed_db_images), "images": unprocessed_db_images}
         except Exception as e:

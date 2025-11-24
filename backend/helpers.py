@@ -236,6 +236,5 @@ def process_image_from_bytes(image_bytes):
     """
     Process image bytes and return the final image as bytes (either raw or standard format).
     """
-    
     return process_raw_image_from_bytes(image_bytes)
     

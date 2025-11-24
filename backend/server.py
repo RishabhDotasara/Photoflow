@@ -11,8 +11,8 @@ from typing import Optional, Dict, Any
 from sqlalchemy.exc import IntegrityError
 
 # file imports 
-from redisClient import RedisClient
-from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id,get_unprocessed_images, add_image, get_project, clear_project_images, user_exists, check_project_exists
+from redisClient import redis_client
+from db import save_oauth_token, SessionLocal, get_db, get_oauth_token, set_project_folder_id,get_number_of_images, get_project, clear_project_images, user_exists, check_project_exists
 from helpers import credentials_for_user, get_drive_images, find_similar_images, download_file_from_presigned_url
 from clerk import set_public_user_id
 
@@ -44,13 +44,6 @@ app.add_middleware(
 
 
 # REDIS CLIENT INITIALIZATION
-redis_client = RedisClient()
-try:
-    redis_client.connect()
-    print("Connected to Redis successfully.")
-except RuntimeError as e:
-    print(f"Error connecting to Redis: {e}")
-
 
 # GOOGLE DRIVE API CONFIG 
 CLIENT_ID = "801066432691-qp8orftfhfr6hfejuhglhvgropgbv54q.apps.googleusercontent.com"
@@ -321,29 +314,21 @@ def get_project_endpoint(project_id: str):
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=project.drive_folder_id)
-        out_of_sync = len(images) != len(project.images)
-        # image_ids = [img.drive_file_id for img in project.images]
-
-        # if out of sync, just insert those imagse back in the db with processed set to false 
-        # if out_of_sync:
-        #     for img in images:
-        #         if img not in image_ids:
-        #             try:
-        #                 add_image(
-        #                     db=db,
-        #                     project_id=project.id,
-        #                     drive_file_id=img,
-        #                     name=img.get("name"),
-        #                     mime_type=img.get("mimeType"),
-        #                     download_url=img.get("download_url"),
-        #                     thumbnail_link=img.get("thumbnail"),
-        #                 )
-        #             except IntegrityError as e:
-        #                 db.rollback()
-        #                 # image already exists, skip
-        #                 continue
         
+        total_image_count = 0 
+        # check in redis cache first
+        cache_key = f"project:{project_id}:image_count"
+        cached_count = redis_client.get_key(cache_key)
+        if cached_count is not None:
+            total_image_count = int(cached_count)
+        else:
+            total_image_count = get_number_of_images(db=db, project_id=project.id)
+            # set in redis cache for future 
+            redis_client.set_key(cache_key, str(total_image_count))
+
+        images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=project.drive_folder_id)
+        out_of_sync = len(images) != total_image_count
+
         
         project_data = {
             "project_id": project.id,
@@ -351,7 +336,7 @@ def get_project_endpoint(project_id: str):
             "name": project.name,
             "drive_folder_id": project.drive_folder_id,
             "status": project.status,
-            "image_count": len(project.images),
+            "image_count": total_image_count,
             "created_at": project.created_at,
             "updated_at": project.updated_at,
             "out_of_sync": out_of_sync 
@@ -596,13 +581,27 @@ def get_drive_image(file_id: str, user_id: str, download: Optional[bool] = False
 
 @app.get("/get-progress")
 def get_progress(project_id: str):
-    total_images = redis_client.get_key("total_images:${project_id}")
+    
+    total_images = redis_client.get_key(f"total_images:{project_id}")
     processed_images = redis_client.get_key(f"processed_images:{project_id}")
+    thumbnails_generated = redis_client.get_key(f"thumbnails_generated:{project_id}")
+    
+    # Convert to int with safe defaults
+    total = int(total_images) if total_images else 0
+    processed = int(processed_images) if processed_images else 0
+    thumbnails = int(thumbnails_generated) if thumbnails_generated else 0
+   
+    image_processing_progress = (processed / total * 100) if total > 0 else 0
+    thumbnails_progress = (thumbnails / total * 100) if total > 0 else 0
+    
     return {
         "project_id": project_id,
-        "total_images": int(total_images) if total_images else 0,
-        "processed_images": int(processed_images) if processed_images else 0,
-        "percent_complete": (int(processed_images) / int(total_images) * 100) if total_images and processed_images else 0
+        "total_images": total,
+        "processed_images": processed,
+        "thumbnails_generated": thumbnails,
+        "percent_complete": image_processing_progress,
+        "image_processing_progress": round(image_processing_progress, 1),
+        "thumbnails_progress": round(thumbnails_progress, 1)
     }
 
 @app.get("/resync-drive-folder")
@@ -615,11 +614,17 @@ def resync_drive_folder(user_id: str, project_id: str):
     )
     return {"status": "Folder resyncing started.", "folder_task_id": async_result.id}
 
-@app.get("/get-signed-url")
-def get_presigned_url_to_upload(object_name:str):
+class PresignedURLRequest(BaseModel):
+    object_names: List[str]
+
+@app.post("/get-presigned-urls")
+def get_presigned_url_to_upload(object_name:PresignedURLRequest):
     try:
-        presigned_url = get_upload_presigned_url(bucket=_bucket_name, object_name=object_name)
-        return {"status": "ok", "presigned_url": presigned_url}
+        presigned_urls = []
+        for object_name in object_name.object_names:
+            presigned_url = get_upload_presigned_url(bucket=_bucket_name, object_name=object_name)
+            presigned_urls.append(presigned_url)
+        return {"status": "ok", "presigned_urls": presigned_urls}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate presigned URL: {str(e)}")
     
