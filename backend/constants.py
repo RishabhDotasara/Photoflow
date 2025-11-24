@@ -1,0 +1,5 @@
+THUMBNAILS_GENERATED_KEY = "thumbnails_generated"
+TOTAL_IMAGES_KEY = "total_images" 
+TOTAL_THUMBNAILS_KEY = "total_thumbnails"
+IMAGES_PROCESSED_KEY = "images_processed"
+TOTAL_IMAGE_COUNT_KEY = "total_image_count"

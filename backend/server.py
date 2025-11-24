@@ -17,9 +17,7 @@ from helpers import credentials_for_user, get_drive_images, find_similar_images,
 from clerk import set_public_user_id
 
 #google drive api imports 
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
+from constants import IMAGES_PROCESSED_KEY, THUMBNAILS_GENERATED_KEY, TOTAL_IMAGES_KEY, TOTAL_THUMBNAILS_KEY, TOTAL_IMAGE_COUNT_KEY
 from s3 import list_files_in_s3_folder, generate_presigned_url, get_upload_presigned_url
 from typing import *
 import os 
@@ -316,16 +314,18 @@ def get_project_endpoint(project_id: str):
         
         
         total_image_count = 0 
-        # check in redis cache first
-        cache_key = f"project:{project_id}:image_count"
-        cached_count = redis_client.get_key(cache_key)
-        if cached_count is not None:
+        # # check in redis cache first
+        cache_key = f"{TOTAL_IMAGE_COUNT_KEY}:{project.id}"
+        cached_count = int(redis_client.get_key(cache_key))
+        if cached_count:
+            print("Cached count found:", cached_count)
             total_image_count = int(cached_count)
         else:
-            total_image_count = get_number_of_images(db=db, project_id=project.id)
             # set in redis cache for future 
+            total_image_count = get_number_of_images(db=db, project_id=project.id)
             redis_client.set_key(cache_key, str(total_image_count))
 
+        print("Total image count:", total_image_count)
         images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=project.drive_folder_id)
         out_of_sync = len(images) != total_image_count
 
@@ -582,9 +582,9 @@ def get_drive_image(file_id: str, user_id: str, download: Optional[bool] = False
 @app.get("/get-progress")
 def get_progress(project_id: str):
     
-    total_images = redis_client.get_key(f"total_images:{project_id}")
-    processed_images = redis_client.get_key(f"processed_images:{project_id}")
-    thumbnails_generated = redis_client.get_key(f"thumbnails_generated:{project_id}")
+    total_images = redis_client.get_key(f"{TOTAL_IMAGES_KEY}:{project_id}")
+    processed_images = redis_client.get_key(f"{IMAGES_PROCESSED_KEY}:{project_id}")
+    thumbnails_generated = redis_client.get_key(f"{THUMBNAILS_GENERATED_KEY}:{project_id}")
     
     # Convert to int with safe defaults
     total = int(total_images) if total_images else 0
@@ -601,7 +601,8 @@ def get_progress(project_id: str):
         "thumbnails_generated": thumbnails,
         "percent_complete": image_processing_progress,
         "image_processing_progress": round(image_processing_progress, 1),
-        "thumbnails_progress": round(thumbnails_progress, 1)
+        "thumbnails_progress": round(thumbnails_progress, 1),
+        "images_progress": round(image_processing_progress, 1)
     }
 
 @app.get("/resync-drive-folder")
