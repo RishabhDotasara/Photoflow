@@ -11,6 +11,7 @@ import {
     SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import Link from "next/link"
+import { useUser } from "@clerk/nextjs"
 
 export function NavMain({
     items,
@@ -19,8 +20,12 @@ export function NavMain({
         title: string
         url: string
         icon?: Icon
+        role: "user" | "admin"
     }[]
 }) {
+
+    const {user} = useUser();
+
     return (
         <SidebarGroup>
             <SidebarGroupContent className="flex flex-col gap-2">
@@ -37,14 +42,19 @@ export function NavMain({
                     </SidebarMenuItem>
                 </SidebarMenu> */}
                 <SidebarMenu>
-                    {items.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton tooltip={item.title}>
-                                {item.icon && <item.icon />}
-                                <Link href={item.url}><span>{item.title}</span></Link>
-                            </SidebarMenuButton>
-                        </SidebarMenuItem>
-                    ))}
+                    {items.map((item) => {
+                        
+                        if (user?.publicMetadata.role === item.role || item.role === "user"){
+                            return (
+                            <SidebarMenuItem key={item.title}>
+                                <SidebarMenuButton tooltip={item.title}>
+                                    {item.icon && <item.icon />}
+                                    <Link href={item.url}><span>{item.title}</span></Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>)
+                        }
+                        
+                    })}
                 </SidebarMenu>
             </SidebarGroupContent>
         </SidebarGroup>

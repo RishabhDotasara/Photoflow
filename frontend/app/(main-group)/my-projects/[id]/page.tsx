@@ -256,22 +256,22 @@ export default function ProjectDescriptionPage() {
                                     <div>
                                         <p className="text-sm text-muted-foreground">Thumbnail Generation Progress</p>
                                         <div className="flex gap-2 items-center">
-                                            <Progress value={getProgressQuery.data?.thumbnails_progress || 0} className="h-2 rounded-md" />
-                                            <span className="font-semibold">{getProgressQuery.data?.thumbnails_progress || 0}%</span>
+                                            <Progress value={Math.round(getProgressQuery.data?.thumbnails_progress || 0)} className="h-2 rounded-md" />
+                                            <span className="font-semibold">{Math.round(getProgressQuery.data?.thumbnails_progress || 0)}%</span>
                                         </div>
                                     </div>
                                     <div>
                                         <p className="text-sm text-muted-foreground">Image Processing Progress</p>
                                         <div className="flex gap-2 items-center">
                                             <Progress value={getProgressQuery.data?.image_processing_progress || 0} className="h-2 rounded-md" />
-                                            <span className="font-semibold">{getProgressQuery.data?.image_processing_progress || 0}%</span>
+                                            <span className="font-semibold">{Math.round(getProgressQuery.data?.image_processing_progress || 0)}%</span>
                                         </div>
                                     </div>
                                 </CardContent>
 
                             </Card>)}
 
-                        {getProjectQuery.data?.out_of_sync && <Card>
+                        {getProjectQuery.data?.out_of_sync && getProjectQuery.data?.status !== "processing" && <Card>
                             <CardHeader className="text-muted-foreground">
                                 <div className="flex items-center gap-2 justify-start">
                                     Out of Sync Drive

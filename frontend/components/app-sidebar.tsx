@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useUser } from "@clerk/nextjs"
 import { ModeToggle } from "./theme-toggle"
+import { KeyIcon } from "lucide-react"
 
 const data = {
     user: {
@@ -48,17 +49,20 @@ const data = {
             title: "Home",
             url: "/home",
             icon: IconHome,
+            role: "user"
         },
         {
             title: "My Projects",
             url: "/my-projects",
             icon: IconList,
+            role: "user"
         },
-        // {
-        //     title: "Analytics",
-        //     url: "#",
-        //     icon: IconChartBar,
-        // },
+        {
+            title: "Approvals",
+            url: "/approvals",
+            icon: KeyIcon,
+            role: "admin"
+        },
     ],
     navClouds: [
         {
