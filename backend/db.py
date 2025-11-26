@@ -2,11 +2,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from models import SessionLocal
 from typing import List, Dict, Any, Optional, Generator
-from models import User, OAuthToken, Project, Image, Task, Face
+from models import User, OAuthToken, Project, Image, Task, Face, AccessRequest, ProcessingRequest
 from datetime import datetime
 import uuid
 from s3 import upload_file_to_s3_folder
 from sqlalchemy.orm import noload
+from sqlalchemy.orm import joinedload
 
 
 def get_db() -> Generator:
@@ -246,3 +247,40 @@ def get_project_info(db:Session, user_id:str) -> int:
     processing_projects = db.query(Project).filter(Project.user_id == user_id, Project.status == "processing")
     return count, processing_projects
 
+#approval request methods 
+def get_approval_requests(db:Session, status:Optional[str]=None) -> List:
+    query = db.query(AccessRequest)
+    if status:
+        query = query.filter(AccessRequest.status == status).options(joinedload(AccessRequest.user))
+    return query.all()
+
+def create_approval_request(db:Session, user_id:str,clerk_id:str, user_reason:Optional[str]=None) -> AccessRequest:
+    new_request = AccessRequest(
+        id=gen_uuid(),
+        user_id=user_id,
+        user_reason=user_reason,
+        status="pending",
+        clerk_id=clerk_id
+    )
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+    return new_request
+
+def update_approval_request_status(db:Session, request_id:str, status:str, approved_by:Optional[str]=None, rejection_reason:Optional[str]=None) -> AccessRequest:
+    req = db.query(AccessRequest).filter(AccessRequest.id == request_id).one_or_none()
+    if not req:
+        raise ValueError("access request not found")
+    req.status = status
+    if approved_by:
+        req.approved_by = approved_by
+        req.approved_at = datetime.utcnow()
+    if rejection_reason:
+        req.rejection_reason = rejection_reason
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+def get_processing_request(db:Session, project_id:str) -> Optional[ProcessingRequest]:
+    return db.query(ProcessingRequest).filter(ProcessingRequest.project_id == project_id).one_or_none()

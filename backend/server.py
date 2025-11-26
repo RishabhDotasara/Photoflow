@@ -316,7 +316,7 @@ def get_project_endpoint(project_id: str):
         total_image_count = 0 
         # # check in redis cache first
         cache_key = f"{TOTAL_IMAGE_COUNT_KEY}:{project.id}"
-        cached_count = int(redis_client.get_key(cache_key))
+        cached_count = (redis_client.get_key(cache_key))
         if cached_count:
             print("Cached count found:", cached_count)
             total_image_count = int(cached_count)
@@ -657,3 +657,88 @@ async def download_all(file_names: FileNames):
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=files.zip"}
     )
+
+
+class AccessRequest(BaseModel):
+    email: str
+    reason: str
+    clerk_id: str
+
+@app.post("/create-access-request")
+async def create_access_request(request: AccessRequest):
+    try:
+        from db import create_approval_request , get_user_by_email, create_user, user_exists
+        from clerk import create_clerk_user
+
+        # check if user exists
+        with get_session() as db:
+            if (user_exists(db, request.email)):
+                user = get_user_by_email(db, request.email)
+            else:
+                user = create_user(db, request.email)
+
+
+            set_public_user_id(clerk_user_id=request.clerk_id, user_id=user.id)
+
+            req = create_approval_request(
+                user_id=user.id,
+                db=db,
+                user_reason=request.reason,
+                clerk_id=request.clerk_id
+            )
+        return {"status": "Access request created.", "request_id": req.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create access request: {str(e)}")
+
+class ApproveAccessRequest(BaseModel):
+    request_id: str
+    approver_id: str
+    clerk_user_id: str
+
+@app.post("/approve-access-requests")
+async def approve_access_request(data: ApproveAccessRequest):
+    try:
+        from db import get_approval_requests, update_approval_request_status
+        from clerk import set_user_verified
+        with get_session() as db:
+            set_user_verified(
+                clerk_user_id=data.clerk_user_id,
+                verified=True
+            )
+
+            update_approval_request_status(
+                db=db,
+                request_id=data.request_id,
+                status="approved"
+            )
+        return {"status": "Access request approved."}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to approve access request: {str(e)}")
+    
+@app.get("/access-requests")
+def get_access_requests_endpoint():
+    try:
+        from db import get_approval_requests
+        with get_session() as db: 
+            requests = get_approval_requests(
+                db=db,
+                status="pending"
+            )
+            return {"requests":requests}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch access requests: {str(e)}")
+    
+@app.get("/processing-requests")
+def get_processing_requests_endpoint():
+    try:
+        from db import get_processing_requests
+        with get_session() as db: 
+            requests = get_processing_requests(
+                db=db,
+            )
+            return {"requests":requests}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch processing requests: {str(e)}")

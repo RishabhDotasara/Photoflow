@@ -45,6 +45,40 @@ class User(Base):
 
     oauth_tokens = relationship("OAuthToken", back_populates="user")
     projects = relationship("Project", back_populates="owner")
+    role = Column(String, nullable=False, server_default="user")  # user, admin
+    verified = Column(Boolean, default=False)
+
+class ProcessingRequest(Base):
+    __tablename__ = "processing_requests"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    project_id = Column(UUID(as_uuid=False), ForeignKey("projects.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, server_default="pending")  # pending, approved, rejected
+    approved_by = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(TEXT, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    project = relationship("Project", foreign_keys=[project_id])
+    user = relationship("User", foreign_keys=[user_id])
+    approver = relationship("User", foreign_keys=[approved_by])
+
+
+class AccessRequest(Base):
+    __tablename__ = "access_requests"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, server_default="pending")  # pending, approved, rejected
+    approved_by = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(TEXT, nullable=True)
+    user_reason = Column(TEXT, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    clerk_id = Column(String, nullable=True)  # Clerk user id
+
+    user = relationship("User", foreign_keys=[user_id])
+    approver = relationship("User", foreign_keys=[approved_by])
+
 
 class OAuthToken(Base):
     __tablename__ = "oauth_tokens"
