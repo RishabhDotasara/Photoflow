@@ -282,5 +282,29 @@ def update_approval_request_status(db:Session, request_id:str, status:str, appro
     db.refresh(req)
     return req
 
-def get_processing_request(db:Session, project_id:str) -> Optional[ProcessingRequest]:
-    return db.query(ProcessingRequest).filter(ProcessingRequest.project_id == project_id).one_or_none()
+def get_processing_requests(db:Session) -> List[ProcessingRequest]:
+    return db.query(ProcessingRequest).filter(ProcessingRequest.status == "pending").options(joinedload(ProcessingRequest.user), joinedload(ProcessingRequest.project)).all()
+
+def update_processing_request_status(db:Session, approver_id:str, request_id: str, status:str) -> ProcessingRequest:
+    req = db.query(ProcessingRequest).filter(ProcessingRequest.id == request_id).one_or_none()
+    if not req:
+        raise ValueError("processing request not found")
+    setattr(req, 'status', status)
+    setattr(req, 'approved_by', approver_id)
+    setattr(req, 'approved_at', datetime.utcnow())
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+def create_processing_request(db:Session, project_id:str, requested_by:str) -> ProcessingRequest:
+    new_request = ProcessingRequest(
+        id=gen_uuid(),
+        project_id=project_id,
+        status="pending",
+        user_id=requested_by
+    )
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+    return new_request

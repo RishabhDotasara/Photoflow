@@ -21,6 +21,7 @@ def set_user_verified(clerk_user_id: str, verified: bool):
 
 
 
+
 def create_clerk_user():
     user = clerk_client.users.create_user()
     return user

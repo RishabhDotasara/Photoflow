@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 
 function App() {
   const [showForm, setShowForm] = useState(false);
@@ -15,6 +17,10 @@ function App() {
     { icon: Cpu, title: 'Process', description: 'AI-powered organization & optimization' },
     { icon: Share2, title: 'Share', description: 'Instant distribution via secure links' },
   ];
+
+  const {user, isSignedIn} = useUser();
+  const router = useRouter();
+  
 
  
   return (
@@ -90,55 +96,33 @@ function App() {
 
           {/* Right Side - CTA Card */}
           <div className="flex items-center justify-center">
-            {!showForm ? (
-              <Card className="w-full max-w-md bg-card border-border shadow-lg">
-                <CardContent className="p-8 text-center space-y-6">
+            {isSignedIn ? (
+              <AccessRequestForm />
 
-                  {/* Visual Element */}
-                  <div className="mx-auto h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center">
-                    <Upload className="h-8 w-8 text-primary" />
-                  </div>
-
-                  {/* Content */}
-                  <div className="space-y-3">
-                    <h3 className="text-2xl font-semibold text-foreground">
-                      Ready to Get Started?
-                    </h3>
-                    <p className="text-muted-foreground">
-                      Join our platform and revolutionize how you share event photos with participants.
-                    </p>
-                  </div>
-
-                  {/* CTA Button */}
+            ):
+            (
+              <Card className="w-full max-w-md">
+                <CardContent className="p-8 space-y-6">
+                  <h3 className="text-2xl font-bold text-foreground text-center">
+                    Get Started with PhotoFlow
+                  </h3>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Sign in to request access and start sharing your event photos effortlessly.
+                  </p>
                   <Button
-                    onClick={() => setShowForm(true)}
-                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    size="lg"
+                    variant="default"
+                    className="w-full"
+                    onClick={() => {
+                      router.push("/signup")
+                    }}
                   >
-                    Request Access
+                    Sign In 
                   </Button>
-
-                  {/* Trust indicators */}
-                  <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                      Secure
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
-                      Fast
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="h-1.5 w-1.5 rounded-full bg-purple-500" />
-                      Reliable
-                    </div>
-                  </div>
-
                 </CardContent>
               </Card>
-            ) : (
-              <AccessRequestForm />
-            )}
+            )
+            }
+
           </div>
         </div>
 

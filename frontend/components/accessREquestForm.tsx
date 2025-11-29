@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
+import { useUser } from '@clerk/nextjs';
 
 interface FormData {
     email: string;
@@ -50,6 +51,7 @@ export function AccessRequestForm() {
 
         return isValid;
     };
+    const {user} = useUser();
 
     const submitMutation = useMutation({
         mutationFn: async () => {
@@ -58,7 +60,8 @@ export function AccessRequestForm() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     email: email,
-                    reason: reason,    
+                    reason: reason,   
+                    clerk_id: user?.id
                 }),
             });
 

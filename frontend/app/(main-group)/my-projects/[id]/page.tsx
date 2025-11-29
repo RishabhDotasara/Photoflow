@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, BadgeInfoIcon, Loader2 } from "lucide-react"
 import Link from "next/link"
@@ -89,6 +89,31 @@ export default function ProjectDescriptionPage() {
         }
     });
 
+    const createProcessingRequestMutation = useMutation({
+        mutationFn: async () => {
+            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/create-processing-request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    project_id: params.id,
+                    user_id: user?.publicMetadata?.userId,
+                }),
+            });
+            if (!resp.ok) {
+                throw new Error("Failed to create processing request");
+            }
+            return resp.json();
+        },
+        onSuccess: () => {
+            toast.success("Processing request created successfully", {description: "Your images will be processed once admins approve."});
+        },
+        onError: () => {
+            toast.error("Failed to create processing request");
+        }
+    })
+
     interface Folder {
         folder_id: string
         name: string
@@ -147,25 +172,7 @@ export default function ProjectDescriptionPage() {
         }
     })
 
-    const startAnalysisMutation = useMutation({
-        mutationFn: async () => {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/analyze-folder?project_id=${project.id}&user_id=${user?.publicMetadata?.userId}`);
-            if (!resp.ok) {
-                throw new Error("Failed to start analysis");
-            }
-            // refetch the project status and everything
-            getProjectQuery.refetch();
-
-            return resp.json();
-        },
-        onSuccess: () => {
-            toast.success("Analysis started successfully");
-            getProjectQuery.refetch();
-        },
-        onError: () => {
-            toast.error("Failed to start analysis");
-        }
-    })
+    
 
     const startResyncMutation = useMutation({
         mutationFn: async () => {
@@ -225,6 +232,7 @@ export default function ProjectDescriptionPage() {
                         <div>
                             <h1 className="text-4xl font-bold text-foreground mb-2">{getProjectQuery.data?.name || "Loading.."}</h1>
                             <p className="text-muted-foreground">Project ID: {project.id}</p>
+                            {user?.publicMetadata?.userId}
                         </div>
                         {/* <Badge variant={project.status === "processing" ? "secondary" : "default"}>
                             {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
@@ -233,7 +241,10 @@ export default function ProjectDescriptionPage() {
 
                         <div className="flex justify-center items-center gap-4">
                             <Button variant={"outline"} onClick={() => { getProjectQuery.refetch() }} disabled={getProjectQuery.isRefetching}><IconReload /></Button>
-                            <Button disabled={getProjectQuery.data?.status === "processing"} onClick={() => { startAnalysisMutation.mutate() }}>Start Analysis</Button>
+                            <Button disabled={getProjectQuery.data?.status === "processing" || createProcessingRequestMutation.isPending} onClick={() => { createProcessingRequestMutation.mutate() }}>
+                                {createProcessingRequestMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                
+                                Start Analysis</Button>
                         </div>
                         {/* {getProjectQuery.data?.status === "completed" && <Badge className="bg-green-400">Completed</Badge>} */}
                     </div>
@@ -252,7 +263,17 @@ export default function ProjectDescriptionPage() {
 
                         {getProjectQuery.data?.status === "processing" && (
                             <Card>
+                                <CardHeader>
+                                    Processing Progress
+                                </CardHeader>
                                 <CardContent>
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Image Preparation Progress</p>
+                                        <div className="flex gap-2 items-center">
+                                            <Progress value={getProgressQuery.data?.preparation_progress || 0} className="h-2 rounded-md" />
+                                            <span className="font-semibold">{Math.round(getProgressQuery.data?.preparation_progress || 0)}%</span>
+                                        </div>
+                                    </div>
                                     <div>
                                         <p className="text-sm text-muted-foreground">Thumbnail Generation Progress</p>
                                         <div className="flex gap-2 items-center">
@@ -291,7 +312,7 @@ export default function ProjectDescriptionPage() {
                                 <p className="text-3xl font-bold text-foreground">{getProjectQuery.data?.out_of_sync_count || 0} </p>
                             </CardContent> */}
                             <CardFooter className="flex justify-end">
-                                <Button onClick={() => { startResyncMutation.mutate() }}>Sync Now & Process</Button>
+                                <Button onClick={() => { createProcessingRequestMutation.mutate() }}>Sync Now & Process</Button>
                             </CardFooter>
                         </Card>}
                     </div>

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Check, X, Clock, Mail, MessageSquare, Calendar, Loader2 } from "lucide-react"
+import { Check, X, Clock, Mail, MessageSquare, Calendar, Loader2, ProjectorIcon } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -53,13 +53,13 @@ export default function AdminApprovalsPage() {
     })
 
     const approveAccessMutation = useMutation({
-        mutationFn: async (id: string) => {
+        mutationFn: async (data:{id: string, clerk_id:string}) => {
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/approve-access-requests`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    request_id: id, 
+                    request_id: data.id, 
                     approver_id: user?.publicMetadata?.userId, 
-                    clerk_user_id: user?.id
+                    clerk_user_id: data.clerk_id
                 }),
                 headers: {
                     'Content-Type': 'application/json'
@@ -77,22 +77,45 @@ export default function AdminApprovalsPage() {
         },
     });
 
-    const rejectAccessMutation = useMutation({
-        mutationFn: async (id: string) => {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/access-requests/${id}/reject`, {
+    const approveProcessingMutation = useMutation({
+        mutationFn: async (data: {request_id:string, approver_id:string}) => {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/approve-processing-requests`, {
                 method: 'POST',
+                body: JSON.stringify({
+                    request_id: data.request_id, 
+                    approver_id: data.approver_id
+                }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
             });
-            if (!res.ok) throw new Error("Failed to reject");
+            if (!res.ok) throw new Error("Failed to approve");
             return res.json();
         },
         onSuccess: () => {
-            toast.success("Request rejected");
-            queryClient.invalidateQueries({ queryKey: ["access-requests"] });
+            toast.success("Request approved successfully");
+            queryClient.invalidateQueries({ queryKey: ["processing-requests"] });
         },
         onError: () => {
-            toast.error("Failed to reject request");
+            toast.error("Failed to approve request");
         },
-    });
+    })
+
+    const startAnalysisMutation = useMutation({
+        mutationFn: async (project_id:string) => {
+            const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/analyze-folder?project_id=${project_id}&user_id=${user?.publicMetadata?.userId}`);
+            if (!resp.ok) {
+                throw new Error("Failed to start analysis");
+            }
+            return resp.json();
+        },
+        onSuccess: () => {
+            toast.success("Analysis started successfully");
+        },
+        onError: () => {
+            toast.error("Failed to start analysis");
+        }
+    })
 
     const pendingAccessCount = getAccessRequestQuery.data?.requests?.filter((r: any) => r.status === "pending").length || 0;
     const pendingProcessingCount = getProcessingRequestQuery.data?.requests?.filter((r: any) => r.status === "pending").length || 0;
@@ -183,7 +206,7 @@ export default function AdminApprovalsPage() {
                                                             </div>
                                                             <div>
                                                                 <p className="font-medium text-foreground">
-                                                                    {request.requester?.email || request.email}
+                                                                    {request.user?.email || request.email}
                                                                 </p>
                                                                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                                                                     <Calendar className="h-3 w-3" />
@@ -224,8 +247,8 @@ export default function AdminApprovalsPage() {
                                                 {request.status === "pending" && (
                                                     <div className="flex sm:flex-col gap-2 p-4 sm:p-6 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 sm:w-36 justify-center">
                                                         <Button
-                                                            onClick={() => approveAccessMutation.mutate(request.id)}
-                                                            disabled={approveAccessMutation.isPending || rejectAccessMutation.isPending}
+                                                            onClick={() => approveAccessMutation.mutate({id:request.id, clerk_id:request.clerk_id})}
+                                                            disabled={approveAccessMutation.isPending }
                                                             size="sm"
                                                             className="flex-1 sm:flex-initial gap-1.5"
                                                         >
@@ -236,7 +259,7 @@ export default function AdminApprovalsPage() {
                                                             )}
                                                             Approve
                                                         </Button>
-                                                        <Button
+                                                        {/* <Button
                                                             onClick={() => rejectAccessMutation.mutate(request.id)}
                                                             disabled={approveAccessMutation.isPending || rejectAccessMutation.isPending}
                                                             variant="outline"
@@ -249,7 +272,7 @@ export default function AdminApprovalsPage() {
                                                                 <X className="h-3.5 w-3.5" />
                                                             )}
                                                             Reject
-                                                        </Button>
+                                                        </Button> */}
                                                     </div>
                                                 )}
                                             </div>
@@ -304,7 +327,7 @@ export default function AdminApprovalsPage() {
                                                             </div>
                                                             <div>
                                                                 <p className="font-medium text-foreground">
-                                                                    {request.requester?.email || request.userEmail}
+                                                                    {request.user?.email || request.userEmail}
                                                                 </p>
                                                                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
                                                                     <Calendar className="h-3 w-3" />
@@ -327,13 +350,13 @@ export default function AdminApprovalsPage() {
 
                                                     <div className="bg-muted/50 rounded-lg p-4">
                                                         <div className="flex items-start gap-2">
-                                                            <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                                                            {/* <ProjectorIcon className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" /> */}
                                                             <div>
                                                                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                                                                    Reason
+                                                                    Project
                                                                 </p>
                                                                 <p className="text-sm text-foreground leading-relaxed">
-                                                                    {request.reason || "No reason provided"}
+                                                                    {request.project.name || "No Project Name"}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -342,7 +365,9 @@ export default function AdminApprovalsPage() {
 
                                                 {request.status === "pending" && (
                                                     <div className="flex sm:flex-col gap-2 p-4 sm:p-6 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 sm:w-36 justify-center">
-                                                        <Button size="sm" className="flex-1 sm:flex-initial gap-1.5">
+                                                        <Button size="sm" className="flex-1 sm:flex-initial gap-1.5" onClick={()=>{
+                                                            startAnalysisMutation.mutate(request.project.id)
+                                                        }}>
                                                             <Check className="h-3.5 w-3.5" />
                                                             Approve
                                                         </Button>

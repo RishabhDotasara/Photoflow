@@ -17,7 +17,7 @@ from helpers import credentials_for_user, get_drive_images, find_similar_images,
 from clerk import set_public_user_id
 
 #google drive api imports 
-from constants import IMAGES_PROCESSED_KEY, THUMBNAILS_GENERATED_KEY, TOTAL_IMAGES_KEY, TOTAL_THUMBNAILS_KEY, TOTAL_IMAGE_COUNT_KEY
+from constants import IMAGES_PROCESSED_KEY, THUMBNAILS_GENERATED_KEY, TOTAL_IMAGES_KEY, TOTAL_THUMBNAILS_KEY, TOTAL_IMAGE_COUNT_KEY, PREPARING_IMAGE_COUNT, PREPARING_TOTAL_COUNT
 from s3 import list_files_in_s3_folder, generate_presigned_url, get_upload_presigned_url
 from typing import *
 import os 
@@ -314,7 +314,7 @@ def get_project_endpoint(project_id: str):
         
         
         total_image_count = 0 
-        # # check in redis cache first
+        # check in redis cache first
         cache_key = f"{TOTAL_IMAGE_COUNT_KEY}:{project.id}"
         cached_count = (redis_client.get_key(cache_key))
         if cached_count:
@@ -323,7 +323,7 @@ def get_project_endpoint(project_id: str):
         else:
             # set in redis cache for future 
             total_image_count = get_number_of_images(db=db, project_id=project.id)
-            redis_client.set_key(cache_key, str(total_image_count))
+        redis_client.set_key(cache_key, str(total_image_count), exp=5 * 60)
 
         print("Total image count:", total_image_count)
         images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=project.drive_folder_id)
@@ -585,6 +585,8 @@ def get_progress(project_id: str):
     total_images = redis_client.get_key(f"{TOTAL_IMAGES_KEY}:{project_id}")
     processed_images = redis_client.get_key(f"{IMAGES_PROCESSED_KEY}:{project_id}")
     thumbnails_generated = redis_client.get_key(f"{THUMBNAILS_GENERATED_KEY}:{project_id}")
+    preparing_images_count = redis_client.get_key(f"{PREPARING_IMAGE_COUNT}:{project_id}")
+    total_preparing_count = redis_client.get_key(f"{PREPARING_TOTAL_COUNT}:{project_id}")
     
     # Convert to int with safe defaults
     total = int(total_images) if total_images else 0
@@ -593,6 +595,8 @@ def get_progress(project_id: str):
    
     image_processing_progress = (processed / total * 100) if total > 0 else 0
     thumbnails_progress = (thumbnails / total * 100) if total > 0 else 0
+    preparation_progress = (int(preparing_images_count) / int(total_preparing_count) * 100) if total > 0 else 0
+
     
     return {
         "project_id": project_id,
@@ -602,7 +606,8 @@ def get_progress(project_id: str):
         "percent_complete": image_processing_progress,
         "image_processing_progress": round(image_processing_progress, 1),
         "thumbnails_progress": round(thumbnails_progress, 1),
-        "images_progress": round(image_processing_progress, 1)
+        "images_progress": round(image_processing_progress, 1),
+        "preparation_progress": round(preparation_progress, 1)
     }
 
 @app.get("/resync-drive-folder")
@@ -659,13 +664,13 @@ async def download_all(file_names: FileNames):
     )
 
 
-class AccessRequest(BaseModel):
+class AccessRequestCreate(BaseModel):
     email: str
     reason: str
     clerk_id: str
 
 @app.post("/create-access-request")
-async def create_access_request(request: AccessRequest):
+async def create_access_request(request: AccessRequestCreate):
     try:
         from db import create_approval_request , get_user_by_email, create_user, user_exists
         from clerk import create_clerk_user
@@ -730,6 +735,7 @@ def get_access_requests_endpoint():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch access requests: {str(e)}")
     
+
 @app.get("/processing-requests")
 def get_processing_requests_endpoint():
     try:
@@ -738,7 +744,47 @@ def get_processing_requests_endpoint():
             requests = get_processing_requests(
                 db=db,
             )
-            return {"requests":requests}
+            return {"requests":requests or []}
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch processing requests: {str(e)}")
+    
+
+class CreateProcessingRequest(BaseModel):
+    project_id: str
+    user_id: str
+
+@app.post("/create-processing-request")
+def create_processing_request_endpoint(request: CreateProcessingRequest):
+    try:
+        from db import create_processing_request
+        # print("Creating processing request for project:", request.project_id, request.user_id)
+        with get_session() as db:
+            create_processing_request(
+                db=db,
+                project_id=request.project_id,
+                requested_by=request.user_id
+            )
+        return {"status": "Processing request created."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create processing request: {str(e)}")
+    
+class ApproveProcessingRequest(BaseModel):
+    request_id: str
+    approver_id: str 
+
+@app.post("/approve-processing-request")
+def approve_processing_request_endpoint(request: ApproveProcessingRequest):
+    try:
+        from db import update_processing_request_status
+        with get_session() as db:
+            update_processing_request_status(
+                db=db, 
+                request_id = request.request_id, 
+                status="approved",
+                approver_id=request.approver_id, 
+                
+            )
+        return {"status": "Processing request approved."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to approve processing request: {str(e)}")

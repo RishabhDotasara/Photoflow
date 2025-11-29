@@ -1,6 +1,7 @@
 import redis 
 import json 
 import os 
+from typing import Optional 
 
 class RedisClient: 
 
@@ -21,9 +22,9 @@ class RedisClient:
             raise RuntimeError(f"Redis error when connecting to {self.redis_uri}: {e}") from e
         return True
     
-    def set_key(self, key:str, value:str):
+    def set_key(self, key:str, value:str, exp:Optional[int]=2*60):
         try :
-            self.client.set(key, value)
+            self.client.set(key, value, ex=exp)
         except redis.exceptions.RedisError as e:
             raise RuntimeError(f"Redis Error while setting key {key}")
         

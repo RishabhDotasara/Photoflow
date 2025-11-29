@@ -55,7 +55,7 @@ export function ProjectCard({id, projectName, totalPhotos, status, progress = 0 
 
             <CardContent className="space-y-4">
                 {/* Stats Grid */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* <div className="grid grid-cols-2 gap-3">
                     <div className="bg-muted/50 rounded-lg p-3">
                         <div className="flex items-center gap-2 mb-1">
                             <ImageIcon className="w-4 h-4 text-muted-foreground" />
@@ -63,7 +63,7 @@ export function ProjectCard({id, projectName, totalPhotos, status, progress = 0 
                         </div>
                         <p className="text-2xl font-bold text-foreground">{totalPhotos}</p>
                     </div>
-                </div>
+                </div> */}
 
                 {/* Progress Bar - Only show for uploading/processing */}
                 {/* {(status === "uploading" || status === "processing") && (

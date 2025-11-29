@@ -18,7 +18,7 @@ from helpers import credentials_for_user, get_drive_images, create_thumbnail, do
 from sqlalchemy.exc import IntegrityError
 import os 
 from s3 import list_files_in_s3_folder, upload_file_to_s3_folder, generate_presigned_url, upload_file_to_s3_folder_memory, check_file_exists_in_s3_folder
-from constants import THUMBNAILS_GENERATED_KEY, TOTAL_IMAGES_KEY, TOTAL_THUMBNAILS_KEY, IMAGES_PROCESSED_KEY
+from constants import THUMBNAILS_GENERATED_KEY, TOTAL_IMAGES_KEY, TOTAL_THUMBNAILS_KEY, IMAGES_PROCESSED_KEY, PREPARING_IMAGE_COUNT, PREPARING_TOTAL_COUNT
 
 _project_folder_namespace = "project_folder"
 _bucket_name = "researchconclave"
@@ -184,9 +184,10 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
             # use object key as drive_file_id
             db_images = db.query(Image.drive_file_id).filter(Image.project_id == project_id).all()
             existing_drive_file_ids = set([img.drive_file_id for img in db_images])
-
+            unprocessed_count = len(images) - len(existing_drive_file_ids)
             # print(existing_drive_file_ids)
-            
+            redis_client.set_key(f"{PREPARING_TOTAL_COUNT}:{project_id}", str(unprocessed_count))
+            redis_client.set_key(f"{PREPARING_IMAGE_COUNT}:{project_id}", '0')
             for img in images:
                 try:
                     # deduplication check 
@@ -205,6 +206,8 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
                     )
 
                     print("Added image to DB: ", img)
+                    redis_client.increment(f"{PREPARING_IMAGE_COUNT}:{project_id}")
+                    print(f"Preparing images for processing: {redis_client.get_key(f"{PREPARING_IMAGE_COUNT}:{project_id}")}/{redis_client.get_key(f"{PREPARING_TOTAL_COUNT}:{project_id}")}")
 
                 except IntegrityError as e:
                     db.rollback()
@@ -213,6 +216,11 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
 
             # now get all unprocessed images from the db and put them on the processing queue 
             unprocessed_db_images = get_unprocessed_images(db=db, project_id=project_id)
+
+
+            if len(unprocessed_db_images) == 0:
+                update_project_status(db=db, project_id=project_id, status="completed")
+                print("0 images found in project, marking it processed!")
 
                # set stats in redis 
             redis_client.set_key(f"{TOTAL_IMAGES_KEY}:{project_id}", len(unprocessed_db_images))
