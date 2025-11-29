@@ -206,6 +206,7 @@ export default function ProjectDescriptionPage() {
             status: "completed" as const,
         }
     ]
+    
     const statusMap: Record<string, string> = {
         "waiting": "2",
         "processing": "1",

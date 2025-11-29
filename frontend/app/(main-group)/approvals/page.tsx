@@ -78,8 +78,8 @@ export default function AdminApprovalsPage() {
     });
 
     const approveProcessingMutation = useMutation({
-        mutationFn: async (data: {request_id:string, approver_id:string}) => {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/approve-processing-requests`, {
+        mutationFn: async (data: {request_id:string, approver_id:string,project_id:string}) => {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/approve-processing-request`, {
                 method: 'POST',
                 body: JSON.stringify({
                     request_id: data.request_id, 
@@ -89,6 +89,7 @@ export default function AdminApprovalsPage() {
                     'Content-Type': 'application/json'
                 }
             });
+            startAnalysisMutation.mutate(data.project_id)
             if (!res.ok) throw new Error("Failed to approve");
             return res.json();
         },
@@ -366,10 +367,19 @@ export default function AdminApprovalsPage() {
                                                 {request.status === "pending" && (
                                                     <div className="flex sm:flex-col gap-2 p-4 sm:p-6 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 sm:w-36 justify-center">
                                                         <Button size="sm" className="flex-1 sm:flex-initial gap-1.5" onClick={()=>{
-                                                            startAnalysisMutation.mutate(request.project.id)
-                                                        }}>
-                                                            <Check className="h-3.5 w-3.5" />
-                                                            Approve
+                                                            approveProcessingMutation.mutate({request_id:request.id, approver_id:String(user?.publicMetadata?.userId) || "", project_id:request.project.id})
+                                                        }}
+                                                        disabled={approveProcessingMutation.isPending }
+                                                        >
+                                                            {approveProcessingMutation.isPending ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            ) : (
+                                                                <>
+                                                                <Check className="h-3.5 w-3.5" />
+                                                                Approve
+                                                                </>
+                                                                
+                                                            )}
                                                         </Button>
                                                         <Button variant="outline" size="sm" className="flex-1 sm:flex-initial gap-1.5">
                                                             <X className="h-3.5 w-3.5" />

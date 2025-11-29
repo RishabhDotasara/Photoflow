@@ -788,3 +788,4 @@ def approve_processing_request_endpoint(request: ApproveProcessingRequest):
         return {"status": "Processing request approved."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to approve processing request: {str(e)}")
+    
