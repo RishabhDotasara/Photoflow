@@ -233,7 +233,7 @@ export default function ProjectDescriptionPage() {
                         <div>
                             <h1 className="text-4xl font-bold text-foreground mb-2">{getProjectQuery.data?.name || "Loading.."}</h1>
                             <p className="text-muted-foreground">Project ID: {project.id}</p>
-                            {user?.publicMetadata?.userId}
+                            
                         </div>
                         {/* <Badge variant={project.status === "processing" ? "secondary" : "default"}>
                             {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
