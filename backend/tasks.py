@@ -9,15 +9,16 @@ import cv2
 import base64
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
-from redisClient import RedisClient
+from redisClient import redis_client
 from db import add_image, get_project, get_db, insert_faces, update_project_status_if_done, mark_image_processed, update_project_status, get_unprocessed_images
 from fastapi.responses import RedirectResponse
 from fastapi import HTTPException
 from googleapiclient.discovery import build
-from helpers import credentials_for_user, get_drive_images, create_thumbnail, download_file_from_presigned_url
+from helpers import credentials_for_user, get_drive_images, create_thumbnail, download_file_from_presigned_url, process_image_from_bytes
 from sqlalchemy.exc import IntegrityError
 import os 
 from s3 import list_files_in_s3_folder, upload_file_to_s3_folder, generate_presigned_url, upload_file_to_s3_folder_memory, check_file_exists_in_s3_folder
+from constants import THUMBNAILS_GENERATED_KEY, TOTAL_IMAGES_KEY, TOTAL_THUMBNAILS_KEY, IMAGES_PROCESSED_KEY, PREPARING_IMAGE_COUNT, PREPARING_TOTAL_COUNT
 
 _project_folder_namespace = "project_folder"
 _bucket_name = "researchconclave"
@@ -41,8 +42,6 @@ from models import SessionLocal, Image, OAuthToken
 
 # lazy-loaded model for image tasks
 fa = None
-redis_client = RedisClient()
-redis_client.connect()
 
 def ensure_model():
     global fa
@@ -64,17 +63,18 @@ def download_image(download_url: str, access_token: str | None) -> np.ndarray:
     return img
 
 @celery.task(name="tasks.process_image")
-def process_image(image_id:str, download_url: str,project_id: str):
-    """
-    Heavy worker: downloads image using access_token (if provided), runs insightface,
-    and POSTs callback or writes to DB as required.
-    """
+def process_image(image_id: str, download_url: str, project_id: str):
     try:
         presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=download_url, expiration=3600)
         img_bytes = download_file_from_presigned_url(presigned_url)
+
+        # Fix: Use correct variable name
+        ext = download_url.split("/")[-1].split(".")[-1].lower()
+        if ext in ['arw', 'nef', 'cr2', 'raw', 'dng', 'rw2']:
+            img_bytes = process_image_from_bytes(img_bytes)  # Fix: use img_bytes
+
         img_array = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        # cv2.imwrite(filename=image_id+".png", img=img)
         ensure_model()
         faces = fa.get(img)
         
@@ -90,32 +90,75 @@ def process_image(image_id:str, download_url: str,project_id: str):
             if faces_data:
                 insert_faces(db=db, image_id=image_id, faces=faces_data)
 
-            # increment the processed count
-            processed = redis_client.increment(f'processed_images:{project_id}')
-            total_key = redis_client.get_key(f'total_images:{project_id}')
-            total = int(total_key) if total_key else 0
+           
+            mark_image_processed(db, image_id)
+            redis_client.increment(f"{IMAGES_PROCESSED_KEY}:{project_id}")
+           
+            processed_str = redis_client.get_key(f'{IMAGES_PROCESSED_KEY}:{project_id}')
+            total_str = redis_client.get_key(f'{TOTAL_IMAGES_KEY}:{project_id}')
             
-            print(f"Processed images for project {project_id}: {processed}/{total}")
-            if total > 0 and total == processed:
+            processed = int(processed_str) if processed_str else 0
+            total = int(total_str) if total_str else 0
+            
+            print(f"Image {image_id} processed. Progress: {processed}/{total}")
+
+            # Fix: Use correct processed value after increment
+            if total > 0 and processed >= total:
                 print("Project Completed. Updating status.")
                 update_project_status(db, project_id, "completed")
-
-            mark_image_processed(db, image_id)
-            
-        
-        # for i, f in enumerate(faces, start=1):
-        #     x1, y1, x2, y2 = map(int, f.bbox)
-        #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        #     cv2.putText(img, str(i), (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-        # # save annotated image to disk (for now)
-        # out_path = f"processed_{drive_file_id}.jpg"
-        # cv2.imwrite(out_path, img)
-        # print(f"Processed image {image_id}, saved to {out_path}, detected {len(faces)} faces.")
+                # Ensure final counts are correct
+                redis_client.set_key(f"{IMAGES_PROCESSED_KEY}:{project_id}", total)
+                redis_client.set_key(f"{THUMBNAILS_GENERATED_KEY}:{project_id}", total)
 
     except Exception as e:
-        # Celery will record failure; you can also post callback to your server here
-        print("Error: ", e)
+        print("Error processing image:", e)
 
+
+@celery.task(name="tasks.generate_thumbnail")
+def generate_thumbnail(image_id: str, download_url: str, project_drive_folder: str, project_id: str):
+    try:
+        download_presigned_url = generate_presigned_url(bucket=_bucket_name, object_name=download_url)
+        img_content = download_file_from_presigned_url(download_presigned_url)
+
+        ext = download_url.split("/")[-1].split(".")[-1].lower()
+        if ext in ['arw', 'nef', 'cr2', 'raw', 'dng', 'rw2']:
+            img_content = process_image_from_bytes(img_content)
+
+        thumbnail = create_thumbnail(img_content)
+        
+        # Fix: Use consistent thumbnail naming
+        base_name = download_url.split("/")[-1]
+        thumbnail_name = f"{base_name}_thumbnail.jpg"
+        
+        if not check_file_exists_in_s3_folder(
+            bucket=_bucket_name, 
+            folder_path=f"thumbnails/{project_drive_folder}", 
+            object_name=thumbnail_name
+        ):
+            upload_file_to_s3_folder_memory(
+                file_content=thumbnail, 
+                object_name=thumbnail_name,
+                bucket=_bucket_name,
+                folder_path=f"thumbnails/{project_drive_folder}"
+            )
+            
+        print("Uploaded thumbnail for image", image_id)
+        redis_client.increment(f"{THUMBNAILS_GENERATED_KEY}:{project_id}")
+        
+        # Debug: Show current progress
+        thumb_count = redis_client.get_key(f'{THUMBNAILS_GENERATED_KEY}:{project_id}')
+        total_count = redis_client.get_key(f'{TOTAL_THUMBNAILS_KEY}:{project_id}')
+        print(f"Thumbnail Progress: {thumb_count}/{total_count}")
+            
+        async_result = celery.send_task(
+            "tasks.process_image",
+            args=(image_id, download_url, project_id),
+            queue="image_tasks"  # Add explicit queue
+        )
+        print(f"Enqueued image {download_url} for processing, task id: {async_result.id}")
+        
+    except Exception as e:
+        print(f"Failed to generate thumbnail for {download_url}: {e}")
 
 
 @celery.task(name="tasks.list_folder_and_enqueue")
@@ -125,71 +168,46 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
     refreshes user's Google access token, and enqueues process_image tasks to image_tasks queue.
     """
     with get_session() as db:
-        # get the folder_id first from redis 
-        # proj = redis_client.get_dict(f"{_project_folder_namespace}:{project_id}")
-        # folder_id = proj.get("folder_id") if proj else None
-        
-        # if not folder_id:
-        #     # check in db as well
+
         proj = get_project(db=db, project_id=project_id)
         folder_id = proj.drive_folder_id if proj else None
         if not folder_id:
             raise HTTPException(status_code=400, detail="Project not found or folder ID not set.")
-            
-        # creds = credentials_for_user(user_id, redis_client)
-        # get all image links from the folder using google drive api and push them on the queue to process 
 
         try:
             update_project_status(db=db, project_id=project_id, status="processing")
             print("Marked project as processing")
             images = list_files_in_s3_folder(bucket=_bucket_name, folder_path=proj.drive_folder_id)
-            print(images)
-            # optionally store image list in redis or enqueue tasks here
-            # batch create images in db before pushing to the queue 
 
-            # redis_client.set_dict(f"project_images:{project_id}", {"count": len(images)})
-            # enqueu the images to the processing queue 
-
+         
             # get the list of images already in db to avoid duplicates
             # use object key as drive_file_id
             db_images = db.query(Image.drive_file_id).filter(Image.project_id == project_id).all()
             existing_drive_file_ids = set([img.drive_file_id for img in db_images])
-
+            unprocessed_count = len(images) - len(existing_drive_file_ids)
             # print(existing_drive_file_ids)
-            
+            redis_client.set_key(f"{PREPARING_TOTAL_COUNT}:{project_id}", str(unprocessed_count))
+            redis_client.set_key(f"{PREPARING_IMAGE_COUNT}:{project_id}", '0')
             for img in images:
                 try:
                     # deduplication check 
                     if img in existing_drive_file_ids:
                         continue
-                    
+                                       
 
-                    download_url = generate_presigned_url(bucket=_bucket_name, object_name=f"{img}")
-                    print(download_url)
-                    img_content = download_file_from_presigned_url(download_url)
-                    # create the thumbnail and push to the s3 bucket 
-                    thumbnail = create_thumbnail(img_content)
-                    # save this thumbnail link as well in the db
-                    if not check_file_exists_in_s3_folder(bucket=_bucket_name, folder_path="thumbnails/"+proj.drive_folder_id, object_name=f"t{img.split("/")[-1]}_thumbnail.jpg"):
-                        upload_file_to_s3_folder_memory(
-                            file_content=thumbnail, 
-                            object_name=f"{img.split("/")[-1]}_thumbnail.jpg",
-                            bucket=_bucket_name,
-                            folder_path="thumbnails/"+proj.drive_folder_id,
-                        )
-
-                    # get presigned url for the image to be used by the worker to process the image  
-                    thumbnail_url = generate_presigned_url(bucket=_bucket_name, object_name=f"thumbnails/{proj.drive_folder_id}/{img}_thumbnail.jpg")
-                    
                     add_image(
                         db=db,
                         project_id=project_id,
                         drive_file_id=img,
                         name=img,
                         mime_type="",
-                        download_url=download_url,
-                        thumbnail_link=thumbnail_url,
+                        download_url="",
+                        thumbnail_link="",
                     )
+
+                    print("Added image to DB: ", img)
+                    redis_client.increment(f"{PREPARING_IMAGE_COUNT}:{project_id}")
+                    print(f"Preparing images for processing: {redis_client.get_key(f"{PREPARING_IMAGE_COUNT}:{project_id}")}/{redis_client.get_key(f"{PREPARING_TOTAL_COUNT}:{project_id}")}")
 
                 except IntegrityError as e:
                     db.rollback()
@@ -198,25 +216,34 @@ def list_folder_and_enqueue(project_id: str, user_id: str):
 
             # now get all unprocessed images from the db and put them on the processing queue 
             unprocessed_db_images = get_unprocessed_images(db=db, project_id=project_id)
+
+
+            if len(unprocessed_db_images) == 0:
+                update_project_status(db=db, project_id=project_id, status="completed")
+                print("0 images found in project, marking it processed!")
+
+               # set stats in redis 
+            redis_client.set_key(f"{TOTAL_IMAGES_KEY}:{project_id}", len(unprocessed_db_images))
+            redis_client.set_key(f"{TOTAL_THUMBNAILS_KEY}:{project_id}", len(unprocessed_db_images))
+            redis_client.set_key(f"{THUMBNAILS_GENERATED_KEY}:{project_id}", 0)
+            redis_client.set_key(f"{IMAGES_PROCESSED_KEY}:{project_id}", 0)
             
             for img in unprocessed_db_images:
                 try:
                     async_result = celery.send_task(
-                            "tasks.process_image",
+                            "tasks.generate_thumbnail",
                             args=(
                                 img.id,
                                 img.drive_file_id,
-                                img.project_id,
-                         
+                                proj.drive_folder_id,
+                                project_id
                                 )
                             )
-                    print(f"Enqueued image {img.drive_file_id} task id: {async_result.id}")
+                    print(f"Enqueued image {img.drive_file_id} for thumbnail generation task id: {async_result.id}")
                 except Exception as e:
                     print(f"Failed to enqueue image {img.drive_file_id}: {e}")
                     continue
                 
-            redis_client.set_key(f"total_images:{project_id}",len(unprocessed_db_images))
-            redis_client.set_key(f"processed_images:{project_id}", 0)
             
             return {"status": "ok", "count": len(unprocessed_db_images), "images": unprocessed_db_images}
         except Exception as e:

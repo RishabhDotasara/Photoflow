@@ -23,7 +23,7 @@ interface OnboardingFlowProps {
 
 
 export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
-    const [phase, setPhase] = useState<OnboardingPhase>("email")
+    const [phase, setPhase] = useState<OnboardingPhase>("complete")
     const [email, setEmail] = useState("")
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState("")
@@ -82,56 +82,6 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
 
     return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
-            <Card className="w-full max-w-md">
-                {/* Phase 1: Email */}
-                {phase === "email" && (
-                    <div className="p-8">
-                        <div className="mb-6">
-                            {/* {process.env.NEXT_PUBLIC_BACKEND_BASE_URL} */}
-                            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
-                                <Mail className="w-6 h-6 text-primary" />
-                            </div>
-                            <h1 className="text-2xl font-bold text-foreground mb-2">Welcome</h1>
-                            <p className="text-muted-foreground">Setup your account to get started</p>
-                        </div>
-
-                        <form onSubmit={handleEmailSubmit} className="space-y-4">
-                            <div>
-                                <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
-                                    Email Address
-                                </label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder="you@example.com"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    disabled={isLoading}
-                                    className="w-full"
-                                />
-                            </div>
-
-                            {error && (
-                                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                    <p className="text-sm text-destructive">{error}</p>
-                                </div>
-                            )}
-
-                            <Button type="submit" disabled={isLoading || !email} className="w-full">
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Creating account...
-                                    </>
-                                ) : (
-                                    "Create Account"
-                                )}
-                            </Button>
-                        </form>
-                    </div>
-                )}
-
                 {/* Phase 3: Complete */}
                 {phase === "complete" && (
                     <div className="p-8 text-center">
@@ -145,7 +95,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
                         </Button>
                     </div>
                 )}
-            </Card>
+           
         </div>
     )
 }

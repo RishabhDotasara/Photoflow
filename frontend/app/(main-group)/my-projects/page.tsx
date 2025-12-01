@@ -46,15 +46,7 @@ export default function ProjectsPage() {
         },
     ])
 
-    // Simulate upload progress
-    useEffect(() => {
-        if (uploadProgress < 100) {
-            const timer = setTimeout(() => {
-                setUploadProgress((prev) => Math.min(prev + Math.random() * 30, 100))
-            }, 500)
-            return () => clearTimeout(timer)
-        }
-    }, [uploadProgress])
+  
 
     const listProjectsQuery = useQuery({
         queryKey: ['projects', user?.publicMetadata?.userId],

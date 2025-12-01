@@ -2,12 +2,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from models import SessionLocal
 from typing import List, Dict, Any, Optional, Generator
-from models import User, OAuthToken, Project, Image, Task, Face
+from models import User, OAuthToken, Project, Image, Task, Face, AccessRequest, ProcessingRequest
 from datetime import datetime
 import uuid
 from s3 import upload_file_to_s3_folder
+from sqlalchemy.orm import noload
+from sqlalchemy.orm import joinedload
 
-engine = create_engine("postgresql://youruser:yourpass@localhost:5432/photoflow_db")
 
 def get_db() -> Generator:
     db = SessionLocal() 
@@ -116,7 +117,10 @@ def get_unprocessed_images(db: Session, project_id: str) -> List[Image]:
     return db.query(Image).filter(Image.project_id == project_id, Image.processed == False).all()
 
 def get_project(db: Session, project_id: str) -> Optional[Project]:
-    return db.query(Project).filter(Project.id == project_id).one_or_none()
+    return db.query(Project).options(noload(Project.images)).filter(Project.id == project_id).one_or_none()
+
+def get_number_of_images(db: Session, project_id: str) -> int:
+    return db.query(Image).filter(Image.project_id == project_id).count()
 
 def list_projects_by_user(db: Session, user_id: str) -> List[Project]:
     return db.query(Project).filter(Project.user_id == user_id).all()
@@ -237,9 +241,70 @@ def has_given_drive_permission(db:Session, user_id: str):
     token = db.query(OAuthToken).filter(OAuthToken.user_id == user_id, OAuthToken.provider == "google")
     return token is not None
 
-def get_project_info(db:Session, user_id:str) -> int:
+def get_project_info(db:Session, user_id:str):
     count = db.query(Project).filter(Project.user_id == user_id).count()
     # get projects which are under processing
     processing_projects = db.query(Project).filter(Project.user_id == user_id, Project.status == "processing")
     return count, processing_projects
 
+#approval request methods 
+def get_approval_requests(db:Session, status:Optional[str]=None) -> List:
+    query = db.query(AccessRequest)
+    if status:
+        query = query.filter(AccessRequest.status == status).options(joinedload(AccessRequest.user))
+    return query.all()
+
+def create_approval_request(db:Session, user_id:str,clerk_id:str, user_reason:Optional[str]=None) -> AccessRequest:
+    new_request = AccessRequest(
+        id=gen_uuid(),
+        user_id=user_id,
+        user_reason=user_reason,
+        status="pending",
+        clerk_id=clerk_id
+    )
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+    return new_request
+
+def update_approval_request_status(db:Session, request_id:str, status:str, approved_by:Optional[str]=None, rejection_reason:Optional[str]=None) -> AccessRequest:
+    req = db.query(AccessRequest).filter(AccessRequest.id == request_id).one_or_none()
+    if not req:
+        raise ValueError("access request not found")
+    req.status = status
+    if approved_by:
+        req.approved_by = approved_by
+        req.approved_at = datetime.utcnow()
+    if rejection_reason:
+        req.rejection_reason = rejection_reason
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+def get_processing_requests(db:Session) -> List[ProcessingRequest]:
+    return db.query(ProcessingRequest).filter(ProcessingRequest.status == "pending").options(joinedload(ProcessingRequest.user), joinedload(ProcessingRequest.project)).all()
+
+def update_processing_request_status(db:Session, approver_id:str, request_id: str, status:str) -> ProcessingRequest:
+    req = db.query(ProcessingRequest).filter(ProcessingRequest.id == request_id).one_or_none()
+    if not req:
+        raise ValueError("processing request not found")
+    setattr(req, 'status', status)
+    setattr(req, 'approved_by', approver_id)
+    setattr(req, 'approved_at', datetime.utcnow())
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return req
+
+def create_processing_request(db:Session, project_id:str, requested_by:str) -> ProcessingRequest:
+    new_request = ProcessingRequest(
+        id=gen_uuid(),
+        project_id=project_id,
+        status="pending",
+        user_id=requested_by
+    )
+    db.add(new_request)
+    db.commit()
+    db.refresh(new_request)
+    return new_request

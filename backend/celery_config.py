@@ -15,6 +15,7 @@ import tasks
 celery.conf.task_queues = (
     Queue("folder_tasks"),
     Queue("image_tasks"),
+    Queue("thumbnail_tasks")
 )
 
 celery.conf.task_default_queue = "folder_tasks"
@@ -23,4 +24,5 @@ celery.conf.task_default_queue = "folder_tasks"
 celery.conf.task_routes = {
     "tasks.list_folder_and_enqueue": {"queue": "folder_tasks"},
     "tasks.process_image": {"queue": "image_tasks"},
+    "tasks.generate_thumbnail": {"queue": "thumbnail_tasks"},
 }
