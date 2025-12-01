@@ -24,7 +24,7 @@ export function NavMain({
     }[]
 }) {
 
-    const {user} = useUser();
+    const { user } = useUser();
 
     return (
         <SidebarGroup>
@@ -43,17 +43,19 @@ export function NavMain({
                 </SidebarMenu> */}
                 <SidebarMenu>
                     {items.map((item) => {
-                        
-                        if (user?.publicMetadata.role === item.role || item.role === "user"){
+
+                        if (user?.publicMetadata.role === item.role || item.role === "user") {
                             return (
-                            <SidebarMenuItem key={item.title}>
-                                <SidebarMenuButton tooltip={item.title}>
-                                    {item.icon && <item.icon />}
-                                    <Link href={item.url}><span>{item.title}</span></Link>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>)
+                                <SidebarMenuItem key={item.title}>
+                                    <Link href={item.url}>
+                                        <SidebarMenuButton tooltip={item.title} className="cursor-pointer">
+                                            {item.icon && <item.icon />}
+                                            <span>{item.title}</span>
+                                        </SidebarMenuButton>
+                                    </Link>
+                                </SidebarMenuItem>)
                         }
-                        
+
                     })}
                 </SidebarMenu>
             </SidebarGroupContent>
