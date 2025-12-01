@@ -1,6 +1,6 @@
 "use client"
 import { useRef, useState, useEffect } from "react"
-import { Camera, RotateCw, Check, X, Download } from "lucide-react"
+import { Camera, RotateCw, Check, X, Download, Sparkles, ImageIcon, Loader2, ChevronDown } from "lucide-react"
 
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { useParams } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { downloadImagesAsZipBatched } from "@/lib/download-utils"
 
 export default function SelfieCapture() {
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -20,11 +22,11 @@ export default function SelfieCapture() {
     const [isCameraActive, setIsCameraActive] = useState(false)
     const [generatedImages, setGeneratedImages] = useState<any>([])
     const [uploadComplete, setUploadComplete] = useState(false)
+    const [downloadProgress, setDownloadProgress] = useState(0)
+    const [downloadStatus, setDownloadStatus] = useState("")
+    const [isDownloading, setIsDownloading] = useState(false)
     const { project_id } = useParams()
     const { user } = useUser()
-    const downloadURL = (driveId: string)=>{
-        return `${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}` + `/drive-img/${driveId}?user_id=${user?.publicMetadata.userId}`
-    }
 
     const startCamera = async () => {
         try {
@@ -79,14 +81,16 @@ export default function SelfieCapture() {
         setIsLoading(true)
         try {
             const blob = await (await fetch(capturedImage)).blob()
-
             const response = await uploadSelfieToServer(blob)
-            console.log(response)
 
-            toast.success("Selfie uploaded successfully!")
+            toast.success("Selfie uploaded successfully!", {
+                description: "Finding your photos...",
+            })
 
-            if (response.matching_images_count == 0){
-                toast.info("No matching images found for the uploaded selfie." )
+            if (response.matching_images_count == 0) {
+                toast.info("No matching images found", {
+                    description: "Try uploading a clearer selfie with better lighting.",
+                })
                 setUploadComplete(true)
                 setGeneratedImages([])
                 setCapturedImage(null)
@@ -96,11 +100,16 @@ export default function SelfieCapture() {
             if (response.matching_images) {
                 setGeneratedImages(response.matching_images)
                 setUploadComplete(true)
+                toast.success(`Found ${response.matching_images.length} photos!`, {
+                    description: "Your photos are ready to download.",
+                })
             }
 
             setCapturedImage(null)
         } catch (err) {
-            toast.error("Failed to upload selfie. Please try again.")
+            toast.error("Failed to upload selfie", {
+                description: "Please try again.",
+            })
             console.error("Upload error:", err)
         } finally {
             setIsLoading(false)
@@ -121,18 +130,45 @@ export default function SelfieCapture() {
             throw new Error("Upload failed")
         }
 
-        const json = await response.json()
-        console.log("Upload response status:", json)
-        return json
+        return await response.json()
     }
 
-    const downloadImage = (imageUrl: string, index: number) => {
-        const link = document.createElement("a")
-        link.href = imageUrl
-        link.download = `image-${index + 1}.jpg`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+    const handleDownloadAll = async () => {
+        if (generatedImages.length === 0) return
+
+        setIsDownloading(true)
+        setDownloadProgress(0)
+        setDownloadStatus("Preparing download...")
+
+        try {
+            const images = generatedImages.map((item: any, index: number) => ({
+                url: item.image.download_url,
+                name: `photo-${index + 1}.jpg`,
+            }))
+
+            await downloadImagesAsZipBatched(
+                images,
+                `my-photos-${Date.now()}.zip`,
+                (progress, status) => {
+                    setDownloadProgress(progress)
+                    setDownloadStatus(status)
+                },
+                3
+            )
+
+            toast.success("Download complete!", {
+                description: "Your photos have been saved.",
+            })
+        } catch (error) {
+            console.error("Download failed:", error)
+            toast.error("Download failed", {
+                description: "Please try again or download individually.",
+            })
+        } finally {
+            setIsDownloading(false)
+            setDownloadProgress(0)
+            setDownloadStatus("")
+        }
     }
 
     const resetFlow = () => {
@@ -141,38 +177,8 @@ export default function SelfieCapture() {
         setCapturedImage(null)
     }
 
-    const handleDownloadAll = async () => {
-        if (generatedImages.length === 0) return;
-
-        const fileNames = generatedImages.map((item:any)=>item.image.download_url)
-        setIsLoading(true)
-        const resp = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/get-all-files-zip`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                file_names: fileNames
-            })
-        })
-        // Get the response as a Blob (binary data)
-        const blob = await resp.blob();
-        setIsLoading(false)
-
-        // Create a temporary URL for the Blob
-        const url = URL.createObjectURL(blob);
-
-        // Create an anchor element to trigger the download
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "images.zip"; // The filename for the downloaded ZIP file
-
-        // Programmatically trigger the click event to start the download
-        a.click();
-
-        // Clean up the object URL after the download
-        URL.revokeObjectURL(url);
-
+    const scrollToImages = () => {
+        document.getElementById("images-grid")?.scrollIntoView({ behavior: "smooth" })
     }
 
     useEffect(() => {
@@ -181,96 +187,182 @@ export default function SelfieCapture() {
         }
     }, [])
 
+    // Results page with images
     if (uploadComplete && generatedImages.length > 0) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-8">
-                <div className="max-w-7xl mx-auto space-y-8">
-                    <div className="text-center space-y-3">
-                        {/* <span className="text-xl font-bold pb-4"> 
-                            Made with ❤️ by Webops & Blockchain Club
-                        </span> */}
-                        
-                        <Badge variant="secondary" className="px-4 py-1.5 text-sm font-medium">
-                            {generatedImages.length} {generatedImages.length === 1 ? "Image" : "Images"} Found
-                        </Badge>
-                        <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Your Images</h1>
-                        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                            Click on any image to download it to your device
-                        </p>
-                    </div>
+            <div className="min-h-screen bg-background">
+                {/* Header */}
+                <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                    <div className="max-w-7xl mx-auto px-4 py-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                                    <Sparkles className="h-4 w-4 text-primary-foreground" />
+                                </div>
+                                <div>
+                                    <h1 className="font-semibold">Your Photos</h1>
+                                    <p className="text-xs text-muted-foreground">
+                                        {generatedImages.length} {generatedImages.length === 1 ? "photo" : "photos"} found
+                                    </p>
+                                </div>
+                            </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4  lg:grid-cols-6 xl:grid-cols-8 gap-4 md:gap-6">
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={resetFlow}
+                                    variant="ghost"
+                                    size="sm"
+                                >
+                                    <RotateCw className="w-4 h-4 mr-2" />
+                                    New Search
+                                </Button>
+                                <Button
+                                    onClick={handleDownloadAll}
+                                    disabled={isDownloading}
+                                    size="sm"
+                                >
+                                    {isDownloading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            {downloadProgress}%
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download className="w-4 h-4 mr-2" />
+                                            Download All
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {isDownloading && (
+                            <div className="mt-3">
+                                <Progress value={downloadProgress} className="h-1" />
+                                <p className="text-xs text-muted-foreground mt-1">{downloadStatus}</p>
+                            </div>
+                        )}
+                    </div>
+                </header>
+
+                {/* Images Grid */}
+                <main id="images-grid" className="max-w-7xl mx-auto px-4 py-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
                         {generatedImages.map((item: any, index: number) => (
                             <div
                                 key={item.image.id}
-                                className="group relative aspect-square rounded-xl overflow-hidden bg-muted shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]"
+                                className="group relative aspect-square rounded-lg overflow-hidden bg-muted border hover:border-primary/50 transition-colors"
                             >
                                 <img
                                     src={item.image.thumbnail_url}
-                                    alt={`image ${index + 1}`}
+                                    alt={`Photo ${index + 1}`}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center justify-between">
-                                        {/* <span className="text-white font-medium text-sm">Image {index + 1}</span> */}
-                                        <Button
-                                            // onClick={() => downloadImage(downloadURL(item.image.drive_file_id) + "&download=true", index)}
-                                            size="sm"
-                                            className="bg-white text-black hover:bg-white/90"
-                                        >
-                                            <a href={item.image.download_url} target="_blank" className="flex items-center justify-center gap-2" download>
-                                            <Download className="w-1 h-1 " />
+
+                                {/* Hover Overlay */}
+                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                    <Button
+                                        asChild
+                                        size="sm"
+                                        variant="secondary"
+                                    >
+                                        <a href={item.image.download_url} target="_blank" download>
+                                            <Download className="w-4 h-4 mr-2" />
                                             Download
-                                            </a>
-                                        </Button>
-                                    </div>
+                                        </a>
+                                    </Button>
+                                </div>
+
+                                {/* Index Badge */}
+                                <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Badge variant="secondary" className="text-xs">
+                                        {index + 1}
+                                    </Badge>
                                 </div>
                             </div>
                         ))}
                     </div>
+                </main>
 
-                    <div className="flex justify-center pt-4 items-center gap-2">
-                        <Button onClick={resetFlow} variant="outline" size="lg" className="h-12 px-8">
-                            <RotateCw className="w-5 h-5 mr-2" />
-                            Upload Another Selfie
-                        </Button>
-                        {/* <Button onClick={()=>{handleDownloadAll()}} disabled={isLoading}>
-                            Download All
-                        </Button> */}
+                {/* Footer */}
+                <footer className="border-t mt-auto">
+                    <div className="max-w-7xl mx-auto px-4 py-6">
+                        <p className="text-sm text-muted-foreground text-center">
+                            Made with ❤️ by <span className="font-medium text-foreground">Webops & Blockchain Club</span>
+                        </p>
                     </div>
-                </div>
+                </footer>
             </div>
         )
     }
 
+    // No results page
+    if (uploadComplete && generatedImages.length === 0) {
+        return (
+            <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+                <Card className="w-full max-w-sm">
+                    <CardContent className="pt-8 pb-6 px-6 text-center space-y-4">
+                        <div className="w-12 h-12 mx-auto rounded-full bg-muted flex items-center justify-center">
+                            <ImageIcon className="w-6 h-6 text-muted-foreground" />
+                        </div>
+
+                        <div className="space-y-1">
+                            <h2 className="text-lg font-semibold">No Photos Found</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Try a clearer selfie with better lighting.
+                            </p>
+                        </div>
+
+                        <Button onClick={resetFlow} className="w-full">
+                            <RotateCw className="w-4 h-4 mr-2" />
+                            Try Again
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
+    // Camera capture page
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-muted/20 flex-col gap-4">
-            <span className="text-xl font-bold pb-2">
-                Made with ❤️ by Webops & Blockchain Club
-            </span>
-            <Card className="w-full max-w-2xl shadow-2xl border-2">
-                <CardHeader className="text-center space-y-2">
-                    <CardTitle className="text-3xl font-bold tracking-tight">Take Your Selfie</CardTitle>
-                    <CardDescription className="text-base">
-                        Position yourself in the frame and capture a clear photo
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
+        <div className="min-h-screen flex flex-col bg-background">
+            {/* Header */}
+            <header className="border-b">
+                <div className="max-w-lg mx-auto px-4 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
+                            <Camera className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                        <div>
+                            <h1 className="font-semibold">Find Your Photos</h1>
+                            <p className="text-xs text-muted-foreground">Take a selfie to get started</p>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            {/* Main Content */}
+            <main className="flex-1 flex items-center justify-center p-4">
+                <div className="w-full max-w-lg space-y-4">
                     {error && (
                         <Alert variant="destructive">
                             <AlertDescription>{error}</AlertDescription>
                         </Alert>
                     )}
 
-                    <div className="relative aspect-video bg-muted rounded-lg overflow-hidden shadow-inner">
+                    {/* Camera View */}
+                    <div className="relative aspect-[4/3] bg-muted rounded-lg overflow-hidden border">
                         {!isCameraActive && !capturedImage && (
                             <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="text-center space-y-4">
-                                    <div className="w-20 h-20 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
-                                        <Camera className="w-10 h-10 text-muted-foreground" />
+                                <div className="text-center space-y-3">
+                                    <div className="w-16 h-16 mx-auto rounded-full bg-background border flex items-center justify-center">
+                                        <Camera className="w-8 h-8 text-muted-foreground" />
                                     </div>
-                                    <p className="text-muted-foreground">Camera not active</p>
+                                    <div>
+                                        <p className="font-medium text-sm">Ready to capture</p>
+                                        <p className="text-xs text-muted-foreground">Click the button below</p>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -284,75 +376,104 @@ export default function SelfieCapture() {
                         />
 
                         {capturedImage && (
-                            <img
-                                src={capturedImage}
-                                alt="Captured selfie"
-                                className="w-full h-full object-cover"
-                            />
+                            <div className="relative w-full h-full">
+                                <img
+                                    src={capturedImage}
+                                    alt="Captured selfie"
+                                    className="w-full h-full object-cover"
+                                />
+                                <div className="absolute top-2 right-2">
+                                    <Badge variant="secondary" className="bg-green-500 text-white border-0 text-xs">
+                                        <Check className="w-3 h-3 mr-1" />
+                                        Ready
+                                    </Badge>
+                                </div>
+                            </div>
                         )}
 
                         <canvas ref={canvasRef} className="hidden" />
+
+                        {/* Face guide overlay */}
+                        {isCameraActive && (
+                            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                                <div className="w-40 h-48 border-2 border-dashed border-white/40 rounded-full" />
+                            </div>
+                        )}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3">
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
                         {!isCameraActive && !capturedImage && (
-                            <Button onClick={startCamera} size="lg" className="flex-1 h-12 text-base">
-                                <Camera className="w-5 h-5 mr-2" />
+                            <Button onClick={startCamera} className="flex-1 h-11">
+                                <Camera className="w-4 h-4 mr-2" />
                                 Start Camera
                             </Button>
                         )}
 
                         {isCameraActive && !capturedImage && (
                             <>
-                                <Button onClick={capturePhoto} size="lg" className="flex-1 h-12 text-base">
-                                    <Camera className="w-5 h-5 mr-2" />
-                                    Capture Photo
+                                <Button onClick={capturePhoto} className="flex-1 h-11">
+                                    <Camera className="w-4 h-4 mr-2" />
+                                    Capture
                                 </Button>
-                                <Button onClick={stopCamera} variant="outline" size="lg" className="h-12 bg-transparent">
-                                    <X className="w-5 h-5 mr-2" />
-                                    Cancel
+                                <Button onClick={stopCamera} variant="outline" size="icon" className="h-11 w-11">
+                                    <X className="w-4 h-4" />
                                 </Button>
                             </>
                         )}
 
                         {capturedImage && (
                             <>
-                                <Button onClick={sendToServer} disabled={isLoading} size="lg" className="flex-1 h-12 text-base">
+                                <Button
+                                    onClick={sendToServer}
+                                    disabled={isLoading}
+                                    className="flex-1 h-11"
+                                >
                                     {isLoading ? (
                                         <>
-                                            <div className="w-5 h-5 mr-2 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                            Uploading...
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Searching...
                                         </>
                                     ) : (
                                         <>
-                                            <Check className="w-5 h-5 mr-2" />
-                                            Submit Selfie
+                                            <Sparkles className="w-4 h-4 mr-2" />
+                                            Find Photos
                                         </>
                                     )}
                                 </Button>
                                 <Button
                                     onClick={retakePhoto}
                                     variant="outline"
-                                    size="lg"
+                                    size="icon"
                                     disabled={isLoading}
-                                    className="h-12 bg-transparent"
+                                    className="h-11 w-11"
                                 >
-                                    <RotateCw className="w-5 h-5 mr-2" />
-                                    Retake
+                                    <RotateCw className="w-4 h-4" />
                                 </Button>
                             </>
                         )}
                     </div>
 
-                    <div className="pt-4 border-t">
-                        <p className="text-sm text-muted-foreground text-center">
-                            Your photo will be securely uploaded to our server
-                        </p>
+                    {/* Tips */}
+                    <div className="rounded-lg border bg-muted/50 p-3">
+                        <div className="flex items-start gap-3">
+                            <Sparkles className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <div className="text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">Tip:</span> Face the camera directly with good lighting. Remove sunglasses or hats for better results.
+                            </div>
+                        </div>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </main>
+
+            {/* Footer */}
+            <footer className="border-t">
+                <div className="max-w-lg mx-auto px-4 py-4">
+                    <p className="text-xs text-muted-foreground text-center">
+                        Made with ❤️ by <span className="font-medium text-foreground">Webops & Blockchain Club</span>
+                    </p>
+                </div>
+            </footer>
         </div>
     )
 }
-
-

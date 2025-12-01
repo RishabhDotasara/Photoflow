@@ -29,6 +29,8 @@ import {
     useSidebar,
 } from "@/components/ui/sidebar"
 import { SignOutButton } from "@clerk/nextjs"
+import { InfoIcon } from "lucide-react"
+import Link from "next/link"
 
 export function NavUser({
     user,
@@ -43,6 +45,7 @@ export function NavUser({
 
     return (
         <SidebarMenu>
+            
             <SidebarMenuItem>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -99,6 +102,11 @@ export function NavUser({
                             </DropdownMenuItem> */}
                         </DropdownMenuGroup>
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem className="flex items-center">
+                            <InfoIcon className="size-4" />
+                            {/* About */}
+                            <Link href="/about">About</Link>
+                        </DropdownMenuItem>
                         <DropdownMenuItem>
                             <IconLogout />
                             {/* Log out */}
