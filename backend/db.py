@@ -241,7 +241,7 @@ def has_given_drive_permission(db:Session, user_id: str):
     token = db.query(OAuthToken).filter(OAuthToken.user_id == user_id, OAuthToken.provider == "google")
     return token is not None
 
-def get_project_info(db:Session, user_id:str) -> int:
+def get_project_info(db:Session, user_id:str):
     count = db.query(Project).filter(Project.user_id == user_id).count()
     # get projects which are under processing
     processing_projects = db.query(Project).filter(Project.user_id == user_id, Project.status == "processing")

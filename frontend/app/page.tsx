@@ -96,10 +96,29 @@ function App() {
 
           {/* Right Side - CTA Card */}
           <div className="flex items-center justify-center">
-            {isSignedIn ? (
-              <AccessRequestForm />
-
-            ):
+            {isSignedIn ? (user.publicMetadata.verified ? (
+              <Card className="w-full max-w-md">
+                <CardContent className="p-8 space-y-6">
+                  <h3 className="text-2xl font-bold text-foreground text-center">
+                    Welcome Back, {user.firstName || "User"}!
+                  </h3>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Access your dashboard to manage and share your event photos seamlessly.
+                  </p>
+                  <Button
+                    variant="default"
+                    className="w-full"
+                    onClick={() => {
+                      router.push("/home")
+                    }}
+                  >
+                    Go to Dashboard
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <AccessRequestForm/>
+            )):
             (
               <Card className="w-full max-w-md">
                 <CardContent className="p-8 space-y-6">

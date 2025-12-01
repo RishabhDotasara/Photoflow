@@ -69,13 +69,6 @@ export default function Home() {
         )
     }
 
-    if (isSignedIn && !driveCheckQuery.data) {
-        return (
-            <div className="h-full w-full">
-                <GoogleDriveConnect/>
-            </div>
-        )
-    }
 
 
     const processingItems = [

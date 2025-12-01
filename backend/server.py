@@ -714,12 +714,35 @@ async def approve_access_request(data: ApproveAccessRequest):
             update_approval_request_status(
                 db=db,
                 request_id=data.request_id,
-                status="approved"
+                status="approved",
+                approved_by=data.approver_id
             )
         return {"status": "Access request approved."}
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to approve access request: {str(e)}")
+
+
+class RejectAccessRequest(BaseModel):
+    request_id: str
+    approver_id: str
+
+@app.post("/reject-access-requests")
+async def reject_access_requests(data:RejectAccessRequest):
+    try: 
+        from db import update_approval_request_status
+        with get_session() as db: 
+            update_approval_request_status(
+                db=db,
+                request_id=data.request_id,
+                approved_by=data.approver_id,
+                status = "rejected"
+            )
+        return {"status":"Access request rejected!"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reject access request: {str(e)}")
+
+
     
 @app.get("/access-requests")
 def get_access_requests_endpoint():
@@ -786,6 +809,27 @@ def approve_processing_request_endpoint(request: ApproveProcessingRequest):
                 
             )
         return {"status": "Processing request approved."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to approve processing request: {str(e)}")
+    
+
+class RejectProcessingRequest(BaseModel):
+    request_id: str
+    approver_id: str 
+
+@app.post("/reject-processing-request")
+def reject_processing_request_endpoint(request: RejectProcessingRequest):
+    try:
+        from db import update_processing_request_status
+        with get_session() as db:
+            update_processing_request_status(
+                db=db, 
+                request_id = request.request_id, 
+                status="rejected",
+                approver_id=request.approver_id, 
+                
+            )
+        return {"status": "Processing request rejected."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to approve processing request: {str(e)}")
     

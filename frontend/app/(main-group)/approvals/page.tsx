@@ -14,6 +14,7 @@ import { useUser } from "@clerk/nextjs"
 export default function AdminApprovalsPage() {
     const queryClient = useQueryClient();
     const {user} = useUser();
+    const [idbeingProcessed, setIdBeingProcessed] = useState<string | null>(null);
 
     const getAccessRequestQuery = useQuery({
         queryKey: ["access-requests"],
@@ -54,6 +55,7 @@ export default function AdminApprovalsPage() {
 
     const approveAccessMutation = useMutation({
         mutationFn: async (data:{id: string, clerk_id:string}) => {
+            setIdBeingProcessed(data.id);
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/approve-access-requests`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -70,15 +72,42 @@ export default function AdminApprovalsPage() {
         },
         onSuccess: () => {
             toast.success("Request approved successfully");
+            setIdBeingProcessed(null);
             queryClient.invalidateQueries({ queryKey: ["access-requests"] });
         },
         onError: () => {
             toast.error("Failed to approve request");
+            setIdBeingProcessed(null);
         },
     });
 
+    const rejectAccessMutation = useMutation({
+        mutationFn: async (request_id: string) => {
+            setIdBeingProcessed(request_id);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/reject-access-requests`, {
+                method: 'POST',
+                body: JSON.stringify({ request_id }),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!res.ok) throw new Error("Failed to reject");
+            return res.json();
+        },
+        onSuccess: () => {
+            setIdBeingProcessed(null);
+            toast.success("Request rejected successfully");
+            queryClient.invalidateQueries({ queryKey: ["access-requests"] });
+        },
+        onError: () => {
+            setIdBeingProcessed(null);
+            toast.error("Failed to reject request");
+        },
+    })
+
     const approveProcessingMutation = useMutation({
         mutationFn: async (data: {request_id:string, approver_id:string,project_id:string}) => {
+            setIdBeingProcessed(data.request_id);
             const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/approve-processing-request`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -95,10 +124,36 @@ export default function AdminApprovalsPage() {
         },
         onSuccess: () => {
             toast.success("Request approved successfully");
+            setIdBeingProcessed(null);
             queryClient.invalidateQueries({ queryKey: ["processing-requests"] });
         },
         onError: () => {
+            setIdBeingProcessed(null);
             toast.error("Failed to approve request");
+        },
+    })
+
+    const rejectProcessingMutation = useMutation({
+        mutationFn: async (request_id: string) => {
+            setIdBeingProcessed(request_id);
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_BASE_URL}/reject-processing-request`, {
+                method: 'POST',
+                body: JSON.stringify({ request_id , approver_id: user?.publicMetadata?.userId}),
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!res.ok) throw new Error("Failed to reject");
+            return res.json();
+        },
+        onSuccess: () => {
+            setIdBeingProcessed(null);
+            toast.success("Request rejected successfully");
+            queryClient.invalidateQueries({ queryKey: ["processing-requests"] });
+        },
+        onError: () => {
+            setIdBeingProcessed(null);
+            toast.error("Failed to reject request");
         },
     })
 
@@ -249,31 +304,31 @@ export default function AdminApprovalsPage() {
                                                     <div className="flex sm:flex-col gap-2 p-4 sm:p-6 border-t sm:border-t-0 sm:border-l border-border bg-muted/30 sm:w-36 justify-center">
                                                         <Button
                                                             onClick={() => approveAccessMutation.mutate({id:request.id, clerk_id:request.clerk_id})}
-                                                            disabled={approveAccessMutation.isPending }
+                                                            disabled={approveAccessMutation.isPending && idbeingProcessed === request.id}
                                                             size="sm"
                                                             className="flex-1 sm:flex-initial gap-1.5"
                                                         >
-                                                            {approveAccessMutation.isPending ? (
+                                                            {approveAccessMutation.isPending && idbeingProcessed === request.id ? (
                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                             ) : (
                                                                 <Check className="h-3.5 w-3.5" />
                                                             )}
                                                             Approve
                                                         </Button>
-                                                        {/* <Button
+                                                        <Button
                                                             onClick={() => rejectAccessMutation.mutate(request.id)}
                                                             disabled={approveAccessMutation.isPending || rejectAccessMutation.isPending}
                                                             variant="outline"
                                                             size="sm"
                                                             className="flex-1 sm:flex-initial gap-1.5"
                                                         >
-                                                            {rejectAccessMutation.isPending ? (
+                                                            {rejectAccessMutation.isPending && idbeingProcessed === request.id ? (
                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                             ) : (
                                                                 <X className="h-3.5 w-3.5" />
                                                             )}
                                                             Reject
-                                                        </Button> */}
+                                                        </Button>
                                                     </div>
                                                 )}
                                             </div>
@@ -369,9 +424,9 @@ export default function AdminApprovalsPage() {
                                                         <Button size="sm" className="flex-1 sm:flex-initial gap-1.5" onClick={()=>{
                                                             approveProcessingMutation.mutate({request_id:request.id, approver_id:String(user?.publicMetadata?.userId) || "", project_id:request.project.id})
                                                         }}
-                                                        disabled={approveProcessingMutation.isPending }
+                                                        disabled={approveProcessingMutation.isPending && idbeingProcessed === request.id}
                                                         >
-                                                            {approveProcessingMutation.isPending ? (
+                                                            {approveProcessingMutation.isPending && idbeingProcessed === request.id ? (
                                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                                             ) : (
                                                                 <>
@@ -381,9 +436,21 @@ export default function AdminApprovalsPage() {
                                                                 
                                                             )}
                                                         </Button>
-                                                        <Button variant="outline" size="sm" className="flex-1 sm:flex-initial gap-1.5">
-                                                            <X className="h-3.5 w-3.5" />
-                                                            Reject
+                                                        <Button variant="outline" size="sm" className="flex-1 sm:flex-initial gap-1.5"
+                                                            onClick={()=>{rejectProcessingMutation.mutate(request.id)}}
+                                                            disabled={(approveProcessingMutation.isPending || rejectProcessingMutation.isPending) && idbeingProcessed === request.id}
+                                                        >
+                                                            {rejectProcessingMutation.isPending && idbeingProcessed === request.id ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            ) : (
+                                                                <>
+                                                                <X className="h-3.5 w-3.5" />
+                                                                Reject
+                                                                </>
+                                                            )}  
+                                                        
+                                                        
+                                            
                                                         </Button>
                                                     </div>
                                                 )}
